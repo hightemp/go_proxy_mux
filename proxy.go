@@ -151,6 +151,20 @@ func (ps *ProxyServer) handleConnect(w http.ResponseWriter, r *http.Request, ups
 		return
 	}
 
+	response := make([]byte, 4096)
+	n, err := proxyConn.Read(response)
+	if err != nil {
+		http.Error(w, "Failed to read proxy response", http.StatusBadGateway)
+		return
+	}
+
+	responseStr := string(response[:n])
+	if !strings.Contains(responseStr, "200") {
+		log.Printf("Upstream proxy returned error: %s", responseStr)
+		http.Error(w, "Upstream proxy connection failed", http.StatusBadGateway)
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
 
 	hijacker, ok := w.(http.Hijacker)
