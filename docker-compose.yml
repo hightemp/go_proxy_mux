@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  proxy:
+    build: .
+    ports:
+      - "8380:8380"
+    volumes:
+      - ./config.yaml:/root/config.yaml
+    environment:
+      - CONFIG_FILE=/root/config.yaml
+    restart: unless-stopped
+    networks:
+      - proxy-network
+
+networks:
+  proxy-network:
+    driver: bridge

@@ -1,0 +1,29 @@
+server:
+  port: 8380
+  host: "0.0.0.0"
+
+auth:
+  enabled: true
+  username: "admin"
+  password: "password"
+
+proxy:
+  algorithm: "roundrobin"
+  timeout: 30
+  
+upstreams:
+  - url: "http://proxy1.example.com:8080"
+    auth:
+      enabled: false
+      username: ""
+      password: ""
+  - url: "http://proxy2.example.com:8080"
+    auth:
+      enabled: true
+      username: "user1"
+      password: "pass1"
+  - url: "http://proxy3.example.com:8080"
+    auth:
+      enabled: true
+      username: "user2"
+      password: "pass2"
