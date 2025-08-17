@@ -19,10 +19,10 @@ build-darwin:
 build-all: build-linux build-windows build-darwin
 
 docker-build:
-	docker build -t hightemp/go_proxy_mux:1.0.0 .
+	docker build -t hightemp/go_proxy_mux:1.0.2 .
 
 docker-push:
-	docker push hightemp/go_proxy_mux:1.0.0
+	docker push hightemp/go_proxy_mux:1.0.2
 
 clean:
 	rm -f $(BINARY_NAME) $(BINARY_NAME)-*

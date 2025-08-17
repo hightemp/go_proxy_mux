@@ -14,7 +14,7 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /root/
 
 COPY --from=builder /app/go_proxy_mux .
-COPY --from=builder /app/config.yaml .
+COPY --from=builder /app/config.example.yaml ./config.yaml
 
 EXPOSE 8380
 
