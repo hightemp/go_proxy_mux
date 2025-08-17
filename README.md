@@ -1,6 +1,6 @@
 # Go Proxy Mux
 
-A simple HTTP forward proxy server written in Go with configurable load balancing (http) and authentication.
+A simple HTTP forward proxy server written in Go with configurable load balancing (to http, https) and authentication.
 
 ## Configuration
 
