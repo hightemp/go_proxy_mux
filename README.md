@@ -1,6 +1,6 @@
 # Go Proxy Mux
 
-A simple HTTP forward proxy server written in Go with configurable load balancing and authentication.
+A simple HTTP forward proxy server written in Go with configurable load balancing (http) and authentication.
 
 ## Configuration
 
@@ -8,7 +8,7 @@ Edit `config.yaml` to configure the proxy:
 
 ```yaml
 server:
-  port: 8080
+  port: 8380
   host: "0.0.0.0"
 
 auth:
