@@ -13,24 +13,26 @@ internal/proxy/     Authentication, forwarding, tunnels, and server lifecycle
 
 ## Configure and run
 
-Copy `config.example.yaml` to `config.yaml`. Replace the client credentials, upstream addresses, and credentials. Provide a valid certificate and key for the hostname clients use, at `./certs/fullchain.pem` and `./certs/privkey.pem`, or change those paths in the config. The TLS certificate and key are loaded at startup; restart the service after renewing them.
+Copy `.env.example` to `.env`, then replace the client credentials, upstream addresses, and credentials. Set `MUX_UPSTREAM_COUNT` to the number of entries and fill `MUX_UPSTREAM_1_*` through `MUX_UPSTREAM_N_*`. Provide a valid certificate and key for the hostname clients use, at `./certs/fullchain.pem` and `./certs/privkey.pem`, or change the paths in `.env`. The TLS certificate and key are loaded at startup; restart the service after renewing them.
 
 ```sh
-cp config.example.yaml config.yaml
-chmod 600 config.yaml
+cp .env.example .env
+chmod 600 .env
 make build
-./go_proxy_mux -config config.yaml
+./go_proxy_mux -env .env
 ```
 
-The example intentionally fails validation until its placeholders and TLS files are replaced. The `-config` flag also accepts another path. `proxy.timeout` remains an integer in seconds. New timeout fields accept Go duration strings such as `15s` and `2m`.
+The example intentionally fails validation until its placeholders and TLS files are replaced. All application settings are available as `MUX_*` variables in `.env.example`. Values are literal `KEY=VALUE` lines; do not add shell quotes around passwords. A value may contain `#`, `$`, or `=`; multiline values are unsupported.
 
-For local development, bind `server.host` to `127.0.0.1` and omit `server.tls`; client authentication is optional on loopback. A non-loopback HTTP listener requires `server.allow_insecure_public_http: true`. A non-loopback listener without client authentication requires `server.allow_unauthenticated_public_proxy: true`. Each exception must be enabled explicitly.
+Configuration precedence is **process environment → `.env` → YAML → built-in defaults**. The optional `-config` flag selects the YAML fallback, and `-env` selects the env file (`.env` by default; `-env ""` disables it). A missing YAML file is allowed when env settings provide the upstream list. `MUX_PROXY_TIMEOUT` and YAML `proxy.timeout` remain integers in seconds. Other timeout variables accept Go duration strings such as `15s` and `2m`.
 
-Choose each upstream with a URL scheme: `http://`, `https://`, `socks4://`, or `socks5://`. HTTPS upstreams use certificate verification against system roots; for a private CA, set `tls_ca_file`. SOCKS4 uses an optional `auth.username` as USERID and has no password; domain destinations use SOCKS4a, while IPv6 destinations require SOCKS5. SOCKS5 supports no authentication or username/password authentication. Destination hostnames are resolved by the SOCKS upstream. Keep credentials in `auth`, not in the URL. SOCKS5 username/password is sent to that upstream without encryption.
+For local HTTP development, set `MUX_SERVER_HOST=127.0.0.1` and leave both `MUX_SERVER_TLS_*_FILE` values empty; client authentication is optional on loopback. A non-loopback HTTP listener requires `MUX_SERVER_ALLOW_INSECURE_PUBLIC_HTTP=true`. A non-loopback listener without client authentication requires `MUX_SERVER_ALLOW_UNAUTHENTICATED_PUBLIC_PROXY=true`. Each exception must be enabled explicitly.
+
+Choose each upstream with a URL scheme: `http://`, `https://`, `socks4://`, or `socks5://`. HTTPS upstreams use certificate verification against system roots; for a private CA, set `MUX_UPSTREAM_N_TLS_CA_FILE`. SOCKS4 uses an optional `MUX_UPSTREAM_N_AUTH_USERNAME` as USERID and has no password; domain destinations use SOCKS4a, while IPv6 destinations require SOCKS5. SOCKS5 supports no authentication or username/password authentication. Destination hostnames are resolved by the SOCKS upstream. Keep credentials in the `AUTH_*` variables, not in the URL. SOCKS5 username/password is sent to that upstream without encryption.
 
 ## Docker Compose
 
-Prepare `config.yaml` and a `certs/` directory containing the configured certificate and key, then run `docker compose up --build`. Compose publishes port 8380 as TLS and mounts the configuration and certificates read-only. The image contains neither the working configuration nor TLS keys. Certificate acquisition is external to this project.
+Prepare `.env` and a `certs/` directory containing the configured certificate and key, then run `docker compose up --build`. Compose passes `.env` to the container with raw values and publishes `MUX_PUBLISH_HOST:MUX_PUBLISH_PORT` to `MUX_SERVER_PORT`. It requires Docker Compose 2.30 or newer. Edit `.env` to change application settings in Compose; a shell override of `MUX_SERVER_PORT` also updates the published port. Certificates are mounted read-only; neither `.env` nor TLS keys are included in the image. Certificate acquisition is external to this project.
 
 ## Request handling
 

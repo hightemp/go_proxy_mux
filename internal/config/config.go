@@ -104,15 +104,37 @@ func Default() Config {
 	}
 }
 
-// LoadConfig reads a YAML configuration file and rejects invalid settings.
+// LoadConfig reads YAML and process environment overrides.
 func LoadConfig(filename string) (*Config, error) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("read config: %w", err)
-	}
+	return LoadConfigWithEnv(filename, "")
+}
+
+// LoadConfigWithEnv merges YAML, an optional .env file, and process environment.
+// Process environment takes precedence over .env, then YAML, then defaults.
+func LoadConfigWithEnv(filename, envFile string) (*Config, error) {
 	config := Default()
-	if err := yaml.UnmarshalStrict(data, &config); err != nil {
-		return nil, fmt.Errorf("parse config: %w", err)
+	var fileErr error
+	if filename != "" {
+		data, err := os.ReadFile(filename)
+		if err == nil {
+			if err := yaml.UnmarshalStrict(data, &config); err != nil {
+				return nil, fmt.Errorf("parse config: %w", err)
+			}
+		} else if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("read config: %w", err)
+		} else {
+			fileErr = err
+		}
+	}
+	values, err := readEnvValues(envFile)
+	if err != nil {
+		return nil, err
+	}
+	if fileErr != nil && len(values) == 0 {
+		return nil, fmt.Errorf("read config: %w", fileErr)
+	}
+	if err := applyEnvOverrides(&config, values); err != nil {
+		return nil, err
 	}
 	if err := Validate(&config); err != nil {
 		return nil, err

@@ -3,6 +3,9 @@
 config.yaml
 config.yaml.*
 certs/
+.env
+*.env
+.env.*
 CODE_AUDIT.md
 README.md
 Makefile

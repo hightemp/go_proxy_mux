@@ -1,9 +1,13 @@
 services:
   proxy:
     build: .
+    env_file:
+      - path: ./.env
+        format: raw
+    environment:
+      MUX_SERVER_PORT: "${MUX_SERVER_PORT:-8380}"
     ports:
-      - "8380:8380"
+      - "${MUX_PUBLISH_HOST:-0.0.0.0}:${MUX_PUBLISH_PORT:-8380}:${MUX_SERVER_PORT:-8380}"
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
       - ./certs:/app/certs:ro
     restart: unless-stopped

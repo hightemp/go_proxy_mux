@@ -13,8 +13,9 @@ import (
 
 func main() {
 	configFile := flag.String("config", "config.yaml", "Path to configuration file")
+	envFile := flag.String("env", ".env", "Path to optional environment file (empty to disable)")
 	flag.Parse()
-	cfg, err := config.LoadConfig(*configFile)
+	cfg, err := config.LoadConfigWithEnv(*configFile, *envFile)
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}

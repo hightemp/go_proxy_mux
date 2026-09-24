@@ -2,3 +2,5 @@
 config.yaml
 config.yaml.*
 certs/
+.env
+*.env
