@@ -1,62 +1,103 @@
 package proxy
 
 import (
-	"encoding/base64"
+	"context"
+	"errors"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
-	"time"
-
-	"github.com/hightemp/go_proxy_mux/internal/config"
 )
 
-func (ps *ProxyServer) forwardRequest(w http.ResponseWriter, r *http.Request, upstream *config.UpstreamConfig) {
-	proxyURL, err := url.Parse(upstream.URL)
-	if err != nil {
-		http.Error(w, "Invalid upstream URL", http.StatusBadGateway)
+import "github.com/hightemp/go_proxy_mux/internal/balancer"
+
+func (ps *ProxyServer) forwardRequest(w http.ResponseWriter, r *http.Request, selected balancer.Selection) {
+	target := *r.URL
+	if target.Scheme == "" && target.Host == "" && r.Host != "" {
+		target.Scheme = "http"
+		target.Host = r.Host
+	}
+	if (target.Scheme != "http" && target.Scheme != "https") || target.Hostname() == "" {
+		http.Error(w, "Invalid request destination", http.StatusBadRequest)
 		return
 	}
+	canRetry := (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
+		r.ContentLength == 0 && (r.Body == nil || r.Body == http.NoBody)
+	for attempt := 0; attempt < 2; attempt++ {
+		request := r.Clone(r.Context())
+		request.URL = cloneURL(&target)
+		request.RequestURI = ""
+		request.Host = target.Host
+		request.Header = r.Header.Clone()
+		removeHopHeaders(request.Header)
+		request.Header.Del("X-Forwarded-For")
 
-	client := &http.Client{
-		Timeout: time.Duration(ps.config.Proxy.Timeout) * time.Second,
-	}
-
-	req, err := http.NewRequest(r.Method, r.URL.String(), r.Body)
-	if err != nil {
-		http.Error(w, "Failed to create request", http.StatusInternalServerError)
-		return
-	}
-
-	for key, values := range r.Header {
-		for _, value := range values {
-			req.Header.Add(key, value)
+		response, err := ps.clients[selected.Index].Do(request)
+		if err != nil {
+			if r.Context().Err() != nil {
+				return
+			}
+			ps.balancer.MarkFailure(selected.Index)
+			log.Printf("Upstream %d HTTP request failed: %v", selected.Index, sanitizeError(err))
+			if canRetry && attempt == 0 {
+				if alternate, ok := ps.balancer.Next(selected.Index); ok {
+					selected = alternate
+					continue
+				}
+			}
+			writeUpstreamError(w, err)
+			return
 		}
-	}
-
-	if upstream.Auth.Enabled {
-		auth := base64.StdEncoding.EncodeToString([]byte(upstream.Auth.Username + ":" + upstream.Auth.Password))
-		req.Header.Set("Proxy-Authorization", "Basic "+auth)
-	}
-
-	req.Header.Set("X-Forwarded-For", r.RemoteAddr)
-	req.URL.Scheme = proxyURL.Scheme
-	req.URL.Host = proxyURL.Host
-
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("Error forwarding request to %s: %v", upstream.URL, err)
-		http.Error(w, "Failed to forward request", http.StatusBadGateway)
+		if response.StatusCode == http.StatusProxyAuthRequired {
+			_ = response.Body.Close()
+			ps.balancer.MarkFailure(selected.Index)
+			if canRetry && attempt == 0 {
+				if alternate, ok := ps.balancer.Next(selected.Index); ok {
+					selected = alternate
+					continue
+				}
+			}
+			http.Error(w, "Upstream proxy authentication failed", http.StatusBadGateway)
+			return
+		}
+		ps.balancer.MarkSuccess(selected.Index)
+		headers := response.Header.Clone()
+		removeHopHeaders(headers)
+		for name, values := range headers {
+			for _, value := range values {
+				w.Header().Add(name, value)
+			}
+		}
+		w.WriteHeader(response.StatusCode)
+		if _, copyErr := io.Copy(w, response.Body); copyErr != nil {
+			log.Printf("HTTP response copy failed: %v", sanitizeError(copyErr))
+		}
+		if closeErr := response.Body.Close(); closeErr != nil {
+			log.Printf("HTTP response close failed: %v", sanitizeError(closeErr))
+		}
 		return
 	}
-	defer resp.Body.Close()
+}
 
-	for key, values := range resp.Header {
-		for _, value := range values {
-			w.Header().Add(key, value)
-		}
+func cloneURL(value *url.URL) *url.URL {
+	copy := *value
+	return &copy
+}
+
+func writeUpstreamError(w http.ResponseWriter, err error) {
+	var networkErr net.Error
+	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &networkErr) && networkErr.Timeout()) {
+		http.Error(w, "Upstream proxy timed out", http.StatusGatewayTimeout)
+		return
 	}
+	http.Error(w, "Upstream proxy failed", http.StatusBadGateway)
+}
 
-	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+func sanitizeError(err error) string {
+	var networkErr net.Error
+	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &networkErr) && networkErr.Timeout()) {
+		return "network timeout"
+	}
+	return "network error"
 }

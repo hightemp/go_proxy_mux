@@ -1,2 +1,4 @@
 /go_proxy_mux
 config.yaml
+config.yaml.*
+certs/

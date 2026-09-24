@@ -1,33 +1,31 @@
 package proxy
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"net/http"
 	"strings"
 )
 
 func (ps *ProxyServer) isAuthorized(r *http.Request) bool {
-	auth := r.Header.Get("Proxy-Authorization")
-	if auth == "" {
+	header := r.Header.Get("Proxy-Authorization")
+	if len(header) < 6 || !strings.EqualFold(header[:6], "Basic ") {
 		return false
 	}
-
-	if !strings.HasPrefix(auth, "Basic ") {
-		return false
-	}
-
-	encoded := auth[6:]
-	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	decoded, err := base64.StdEncoding.DecodeString(header[6:])
 	if err != nil {
 		return false
 	}
-
-	credentials := string(decoded)
-	parts := strings.SplitN(credentials, ":", 2)
-	if len(parts) != 2 {
+	username, password, ok := strings.Cut(string(decoded), ":")
+	if !ok {
 		return false
 	}
-
-	username, password := parts[0], parts[1]
-	return username == ps.config.Auth.Username && password == ps.config.Auth.Password
+	expectedUser := sha256.Sum256([]byte(ps.config.Auth.Username))
+	expectedPassword := sha256.Sum256([]byte(ps.config.Auth.Password))
+	userHash := sha256.Sum256([]byte(username))
+	passwordHash := sha256.Sum256([]byte(password))
+	userOK := subtle.ConstantTimeCompare(expectedUser[:], userHash[:])
+	passwordOK := subtle.ConstantTimeCompare(expectedPassword[:], passwordHash[:])
+	return userOK&passwordOK == 1
 }

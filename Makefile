@@ -3,7 +3,7 @@ CMD_PACKAGE=./cmd/go_proxy_mux
 LDFLAGS=-ldflags "-s -w"
 CGO_ENABLED=0
 
-.PHONY: build clean test run
+.PHONY: build build-linux build-windows build-darwin build-all docker-build docker-push clean test run install deps release format-check vet lint ci
 
 build:
 	CGO_ENABLED=$(CGO_ENABLED) go build $(LDFLAGS) -o $(BINARY_NAME) $(CMD_PACKAGE)
@@ -29,7 +29,18 @@ clean:
 	rm -f $(BINARY_NAME) $(BINARY_NAME)-*
 
 test:
-	go test -v ./...
+	go test -race ./...
+
+format-check:
+	@test -z "$$(gofmt -l cmd internal)"
+
+vet:
+	go vet ./...
+
+lint:
+	golangci-lint run ./...
+
+ci: format-check vet lint test
 
 run:
 	go run $(CMD_PACKAGE)

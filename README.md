@@ -1,61 +1,43 @@
-# Go Proxy Mux
+# go_proxy_mux
 
-A simple HTTP forward proxy server written in Go with configurable load balancing (to http, https) and authentication.
+An authenticated HTTP proxy that distributes HTTP and CONNECT requests across HTTP or HTTPS upstream proxies. Its TLS listener supports HTTP/1.1 and HTTP/2 CONNECT.
 
 ## Project layout
 
 ```text
 cmd/go_proxy_mux/   Application entry point
-internal/config/    YAML configuration types and loading
-internal/balancer/  Upstream selection
-internal/proxy/     Authentication, HTTP forwarding, and CONNECT handling
+internal/config/    YAML loading and validation
+internal/balancer/  Upstream selection and cooldown
+internal/proxy/     Authentication, forwarding, tunnels, and server lifecycle
 ```
 
-The configuration example and build files remain at the repository root.
+## Configure and run
 
-## Build and run
+Copy `config.example.yaml` to `config.yaml`. Replace the client credentials, upstream addresses, and credentials. Provide a valid certificate and key for the hostname clients use, at `./certs/fullchain.pem` and `./certs/privkey.pem`, or change those paths in the config. The TLS certificate and key are loaded at startup; restart the service after renewing them.
 
 ```sh
 cp config.example.yaml config.yaml
-# Set your listening address and credentials in config.yaml.
+chmod 600 config.yaml
 make build
 ./go_proxy_mux -config config.yaml
 ```
 
-To run without building a binary first, use `go run ./cmd/go_proxy_mux -config config.yaml`.
+The example intentionally fails validation until its placeholders and TLS files are replaced. The `-config` flag also accepts another path. `proxy.timeout` remains an integer in seconds. New timeout fields accept Go duration strings such as `15s` and `2m`.
 
-## Configuration
+For local development, bind `server.host` to `127.0.0.1` and omit `server.tls`; client authentication is optional on loopback. A non-loopback HTTP listener requires `server.allow_insecure_public_http: true`. A non-loopback listener without client authentication requires `server.allow_unauthenticated_public_proxy: true`. Each exception must be enabled explicitly.
 
-Edit `config.yaml` to configure the proxy:
+HTTPS upstreams use certificate verification against system roots. For a private CA, set that upstream's `tls_ca_file`. The upstream URL contains no credentials; use its `auth` section.
 
-```yaml
-server:
-  port: 8380
-  host: "0.0.0.0"
+## Docker Compose
 
-auth:
-  enabled: true
-  username: "admin"
-  password: "password"
+Prepare `config.yaml` and a `certs/` directory containing the configured certificate and key, then run `docker compose up --build`. Compose publishes port 8380 as TLS and mounts the configuration and certificates read-only. The image contains neither the working configuration nor TLS keys. Certificate acquisition is external to this project.
 
-proxy:
-  algorithm: "roundrobin"  # or "random"
-  timeout: 30
+## Request handling
 
-upstreams:
-  - url: "http://proxy1.example.com:8080"
-    auth:
-      enabled: false
-      username: ""
-      password: ""
-  - url: "http://proxy2.example.com:8080"
-    auth:
-      enabled: true
-      username: "user1"
-      password: "pass1"
-```
+`roundrobin` and `random` select among available upstreams. A network or CONNECT setup failure excludes an upstream for `proxy.failover_cooldown`. A bodyless GET or HEAD and a CONNECT request before its success response may try one alternate upstream. Requests with bodies are never replayed. An upstream `407` becomes a client-facing `502` so the client is not prompted for the upstream's credentials.
 
-## Load Balancing Algorithms
+The listener limits active TCP connections and CONNECT tunnels. A tunnel closes after `proxy.tunnel_idle_timeout` without traffic. SIGINT and SIGTERM stop new requests and close tracked tunnels. If credentials or TLS files are still placeholders, startup fails with a configuration error.
 
-- `roundrobin`: Distributes requests evenly across all upstream servers
-- `random`: Randomly selects an upstream server for each request
+## Checks
+
+`make ci` runs formatting, `go vet`, `golangci-lint`, and race-enabled tests. `make docker-build` builds the container image.

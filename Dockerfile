@@ -12,11 +12,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o go_proxy_mux ./cm
 FROM alpine:latest
 
 RUN apk --no-cache add ca-certificates
-WORKDIR /root/
+WORKDIR /app
 
-COPY --from=builder /app/go_proxy_mux .
-COPY config.example.yaml ./config.yaml
+COPY --from=builder /app/go_proxy_mux /usr/local/bin/go_proxy_mux
 
 EXPOSE 8380
 
-CMD ["./go_proxy_mux"]
+ENTRYPOINT ["/usr/local/bin/go_proxy_mux"]
+CMD ["-config", "/app/config.yaml"]

@@ -1,4 +1,4 @@
-// Package balancer chooses an upstream proxy for each request.
+// Package balancer chooses available upstream proxies and tracks transport failures.
 package balancer
 
 import (
@@ -9,76 +9,80 @@ import (
 	"github.com/hightemp/go_proxy_mux/internal/config"
 )
 
-// LoadBalancer selects the next upstream proxy.
-type LoadBalancer interface {
-	Next() *config.UpstreamConfig
+// Selection identifies one configured upstream.
+type Selection struct {
+	Index    int
+	Upstream config.UpstreamConfig
 }
 
-// RoundRobinBalancer selects upstreams in cyclic order.
-type RoundRobinBalancer struct {
-	upstreams []config.UpstreamConfig
-	current   int
-	mutex     sync.Mutex
+// Balancer distributes requests while temporarily excluding failed upstreams.
+type Balancer struct {
+	upstreams      []config.UpstreamConfig
+	unhealthyUntil []time.Time
+	algorithm      string
+	cooldown       time.Duration
+	current        int
+	random         *rand.Rand
+	now            func() time.Time
+	mu             sync.Mutex
 }
 
-// NewRoundRobinBalancer creates a round-robin selector.
-func NewRoundRobinBalancer(upstreams []config.UpstreamConfig) *RoundRobinBalancer {
-	return &RoundRobinBalancer{
-		upstreams: upstreams,
-		current:   0,
+// New creates an upstream selector from validated configuration.
+func New(cfg config.ProxyConfig, upstreams []config.UpstreamConfig) *Balancer {
+	return &Balancer{
+		upstreams:      append([]config.UpstreamConfig(nil), upstreams...),
+		unhealthyUntil: make([]time.Time, len(upstreams)),
+		algorithm:      cfg.Algorithm,
+		cooldown:       time.Duration(cfg.FailoverCooldown),
+		random:         rand.New(rand.NewSource(time.Now().UnixNano())),
+		now:            time.Now,
 	}
 }
 
-// Next returns the next configured upstream, or nil if none exist.
-func (rb *RoundRobinBalancer) Next() *config.UpstreamConfig {
-	rb.mutex.Lock()
-	defer rb.mutex.Unlock()
-
-	if len(rb.upstreams) == 0 {
-		return nil
+// Next selects a healthy upstream, excluding one already attempted for this request.
+func (b *Balancer) Next(exclude int) (Selection, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	available := make([]int, 0, len(b.upstreams))
+	now := b.now()
+	for i := range b.upstreams {
+		if i != exclude && !now.Before(b.unhealthyUntil[i]) {
+			available = append(available, i)
+		}
 	}
-
-	upstream := &rb.upstreams[rb.current]
-	rb.current = (rb.current + 1) % len(rb.upstreams)
-	return upstream
+	if len(available) == 0 {
+		return Selection{}, false
+	}
+	index := available[0]
+	if b.algorithm == "random" {
+		index = available[b.random.Intn(len(available))]
+	} else {
+		for offset := range b.upstreams {
+			candidate := (b.current + offset) % len(b.upstreams)
+			if candidate != exclude && !now.Before(b.unhealthyUntil[candidate]) {
+				index = candidate
+				break
+			}
+		}
+		b.current = (index + 1) % len(b.upstreams)
+	}
+	return Selection{Index: index, Upstream: b.upstreams[index]}, true
 }
 
-// RandomBalancer selects upstreams randomly.
-type RandomBalancer struct {
-	upstreams []config.UpstreamConfig
-	rand      *rand.Rand
-	mutex     sync.Mutex
-}
-
-// NewRandomBalancer creates a random selector.
-func NewRandomBalancer(upstreams []config.UpstreamConfig) *RandomBalancer {
-	return &RandomBalancer{
-		upstreams: upstreams,
-		rand:      rand.New(rand.NewSource(time.Now().UnixNano())),
+// MarkFailure excludes an upstream until its cooldown expires.
+func (b *Balancer) MarkFailure(index int) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if index >= 0 && index < len(b.upstreams) {
+		b.unhealthyUntil[index] = b.now().Add(b.cooldown)
 	}
 }
 
-// Next returns a randomly selected upstream, or nil if none exist.
-func (rb *RandomBalancer) Next() *config.UpstreamConfig {
-	rb.mutex.Lock()
-	defer rb.mutex.Unlock()
-
-	if len(rb.upstreams) == 0 {
-		return nil
-	}
-
-	index := rb.rand.Intn(len(rb.upstreams))
-	return &rb.upstreams[index]
-}
-
-// CreateBalancer constructs the configured selector.
-func CreateBalancer(algorithm string, upstreams []config.UpstreamConfig) LoadBalancer {
-	switch algorithm {
-	case "random":
-		return NewRandomBalancer(upstreams)
-	case "roundrobin":
-		return NewRoundRobinBalancer(upstreams)
-	default:
-		return NewRoundRobinBalancer(upstreams)
+// MarkSuccess clears a previous failure for an upstream.
+func (b *Balancer) MarkSuccess(index int) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if index >= 0 && index < len(b.upstreams) {
+		b.unhealthyUntil[index] = time.Time{}
 	}
 }

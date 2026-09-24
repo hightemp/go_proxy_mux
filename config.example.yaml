@@ -1,29 +1,33 @@
 server:
-  port: 8380
   host: "0.0.0.0"
+  port: 8380
+  tls:
+    cert_file: "./certs/fullchain.pem"
+    key_file: "./certs/privkey.pem"
+  max_connections: 1024
+  read_header_timeout: 15s
+  idle_timeout: 2m
+  shutdown_timeout: 15s
 
 auth:
   enabled: true
-  username: "admin"
-  password: "password"
+  username: "<set-username>"
+  password: "<set-strong-password>"
 
 proxy:
-  algorithm: "roundrobin"
-  timeout: 30
-  
+  algorithm: roundrobin
+  timeout: 30 # Seconds for HTTP requests and CONNECT setup.
+  max_tunnels: 256
+  tunnel_idle_timeout: 2m
+  failover_cooldown: 30s
+
 upstreams:
   - url: "http://proxy1.example.com:8080"
     auth:
       enabled: false
-      username: ""
-      password: ""
-  - url: "http://proxy2.example.com:8080"
+  - url: "https://proxy2.example.com:8443"
     auth:
       enabled: true
-      username: "user1"
-      password: "pass1"
-  - url: "http://proxy3.example.com:8080"
-    auth:
-      enabled: true
-      username: "user2"
-      password: "pass2"
+      username: "<upstream-username>"
+      password: "<upstream-password>"
+    # tls_ca_file: "./certs/upstream-ca.pem" # Only for a private CA.
