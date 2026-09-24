@@ -74,14 +74,31 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("upstreams must contain at least one proxy")
 	}
 	for i, up := range cfg.Upstreams {
-		if _, err := UpstreamURL(up); err != nil {
+		parsed, err := UpstreamURL(up)
+		if err != nil {
 			return fmt.Errorf("upstreams[%d]: %w", i, err)
 		}
-		if up.Auth.Enabled && (up.Auth.Username == "" || up.Auth.Password == "" || strings.Contains(up.Auth.Username, ":") || up.Auth.Username == "<upstream-username>" || up.Auth.Password == "<upstream-password>") {
-			return fmt.Errorf("upstreams[%d].auth requires a username without ':' and a password", i)
+		if up.Auth.Enabled {
+			if up.Auth.Username == "" || up.Auth.Username == "<upstream-username>" || up.Auth.Password == "<upstream-password>" {
+				return fmt.Errorf("upstreams[%d].auth contains empty or demonstration credentials", i)
+			}
+			switch parsed.Scheme {
+			case "socks4":
+				if up.Auth.Password != "" || len(up.Auth.Username) > 255 || strings.ContainsRune(up.Auth.Username, 0) {
+					return fmt.Errorf("upstreams[%d].auth: SOCKS4 accepts a USERID of at most 255 bytes and no password", i)
+				}
+			case "socks5":
+				if up.Auth.Password == "" || len(up.Auth.Username) > 255 || len(up.Auth.Password) > 255 {
+					return fmt.Errorf("upstreams[%d].auth: SOCKS5 requires a username and password of 1 to 255 bytes", i)
+				}
+			default:
+				if up.Auth.Password == "" || strings.Contains(up.Auth.Username, ":") {
+					return fmt.Errorf("upstreams[%d].auth requires a username without ':' and a password", i)
+				}
+			}
 		}
 		if up.TLSCAFile != "" {
-			if !strings.HasPrefix(up.URL, "https://") {
+			if parsed.Scheme != "https" {
 				return fmt.Errorf("upstreams[%d].tls_ca_file requires an HTTPS upstream", i)
 			}
 			data, err := os.ReadFile(up.TLSCAFile)
@@ -97,14 +114,14 @@ func Validate(cfg *Config) error {
 	return nil
 }
 
-// UpstreamURL parses and normalizes a configured HTTP or HTTPS proxy URL.
+// UpstreamURL parses and normalizes a configured proxy URL.
 func UpstreamURL(up UpstreamConfig) (*url.URL, error) {
 	parsed, err := url.Parse(up.URL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid upstream URL syntax")
 	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return nil, fmt.Errorf("upstream URL scheme must be http or https")
+	if parsed.Scheme != "http" && parsed.Scheme != "https" && parsed.Scheme != "socks4" && parsed.Scheme != "socks5" {
+		return nil, fmt.Errorf("upstream URL scheme must be http, https, socks4, or socks5")
 	}
 	if parsed.Hostname() == "" || parsed.User != nil || (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, fmt.Errorf("upstream URL must contain only scheme and host[:port], without credentials")
@@ -114,10 +131,13 @@ func UpstreamURL(up UpstreamConfig) (*url.URL, error) {
 	}
 	port := parsed.Port()
 	if port == "" {
-		if parsed.Scheme == "https" {
+		switch parsed.Scheme {
+		case "https":
 			port = "443"
-		} else {
+		case "http":
 			port = "80"
+		default:
+			port = "1080"
 		}
 	}
 	parsedPort, err := strconv.Atoi(port)
@@ -126,7 +146,7 @@ func UpstreamURL(up UpstreamConfig) (*url.URL, error) {
 	}
 	parsed.Host = net.JoinHostPort(parsed.Hostname(), port)
 	parsed.Path = ""
-	if up.Auth.Enabled {
+	if up.Auth.Enabled && (parsed.Scheme == "http" || parsed.Scheme == "https") {
 		parsed.User = url.UserPassword(up.Auth.Username, up.Auth.Password)
 	}
 	return parsed, nil

@@ -1,6 +1,6 @@
 # go_proxy_mux
 
-An authenticated HTTP proxy that distributes HTTP and CONNECT requests across HTTP or HTTPS upstream proxies. Its TLS listener supports HTTP/1.1 and HTTP/2 CONNECT.
+An authenticated HTTP proxy that distributes HTTP and CONNECT requests across HTTP, HTTPS, SOCKS4, or SOCKS5 upstream proxies. Its TLS listener supports HTTP/1.1 and HTTP/2 CONNECT.
 
 ## Project layout
 
@@ -26,7 +26,7 @@ The example intentionally fails validation until its placeholders and TLS files 
 
 For local development, bind `server.host` to `127.0.0.1` and omit `server.tls`; client authentication is optional on loopback. A non-loopback HTTP listener requires `server.allow_insecure_public_http: true`. A non-loopback listener without client authentication requires `server.allow_unauthenticated_public_proxy: true`. Each exception must be enabled explicitly.
 
-HTTPS upstreams use certificate verification against system roots. For a private CA, set that upstream's `tls_ca_file`. The upstream URL contains no credentials; use its `auth` section.
+Choose each upstream with a URL scheme: `http://`, `https://`, `socks4://`, or `socks5://`. HTTPS upstreams use certificate verification against system roots; for a private CA, set `tls_ca_file`. SOCKS4 uses an optional `auth.username` as USERID and has no password; domain destinations use SOCKS4a, while IPv6 destinations require SOCKS5. SOCKS5 supports no authentication or username/password authentication. Destination hostnames are resolved by the SOCKS upstream. Keep credentials in `auth`, not in the URL. SOCKS5 username/password is sent to that upstream without encryption.
 
 ## Docker Compose
 

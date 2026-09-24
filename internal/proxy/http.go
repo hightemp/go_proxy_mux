@@ -8,9 +8,10 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-)
 
-import "github.com/hightemp/go_proxy_mux/internal/balancer"
+	"github.com/hightemp/go_proxy_mux/internal/balancer"
+	"github.com/hightemp/go_proxy_mux/internal/socks"
+)
 
 func (ps *ProxyServer) forwardRequest(w http.ResponseWriter, r *http.Request, selected balancer.Selection) {
 	target := *r.URL
@@ -38,7 +39,9 @@ func (ps *ProxyServer) forwardRequest(w http.ResponseWriter, r *http.Request, se
 			if r.Context().Err() != nil {
 				return
 			}
-			ps.balancer.MarkFailure(selected.Index)
+			if !errors.Is(err, socks.ErrUnsupportedDestination) {
+				ps.balancer.MarkFailure(selected.Index)
+			}
 			log.Printf("Upstream %d HTTP request failed: %v", selected.Index, sanitizeError(err))
 			if canRetry && attempt == 0 {
 				if alternate, ok := ps.balancer.Next(selected.Index); ok {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/hightemp/go_proxy_mux/internal/balancer"
 	"github.com/hightemp/go_proxy_mux/internal/config"
+	"github.com/hightemp/go_proxy_mux/internal/socks"
 )
 
 const maxConnectResponseHeaderBytes = 64 << 10
@@ -66,7 +68,9 @@ func (ps *ProxyServer) handleConnect(w http.ResponseWriter, r *http.Request, sel
 		if r.Context().Err() != nil {
 			return
 		}
-		ps.balancer.MarkFailure(selected.Index)
+		if !errors.Is(setupErr, socks.ErrUnsupportedDestination) {
+			ps.balancer.MarkFailure(selected.Index)
+		}
 		log.Printf("Upstream %d CONNECT setup failed: %v", selected.Index, sanitizeError(setupErr))
 		if attempt == 0 {
 			if alternate, ok := ps.balancer.Next(selected.Index); ok {
@@ -88,6 +92,18 @@ func (ps *ProxyServer) dialConnect(ctx context.Context, index int, target string
 	timeout := time.Duration(ps.config.Proxy.Timeout) * time.Second
 	setupCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	if proxyURL.Scheme == "socks4" || proxyURL.Scheme == "socks5" {
+		credentials := socks.Credentials{
+			Enabled:  upstream.Auth.Enabled,
+			Username: upstream.Auth.Username,
+			Password: upstream.Auth.Password,
+		}
+		connection, err := socks.DialContext(setupCtx, proxyURL.Scheme, proxyURL.Host, target, credentials, timeout)
+		if err != nil {
+			return nil, nil, setupError(setupCtx, err)
+		}
+		return connection, bufio.NewReader(connection), nil
+	}
 	raw, err := (&net.Dialer{Timeout: timeout}).DialContext(setupCtx, "tcp", proxyURL.Host)
 	if err != nil {
 		return nil, nil, setupError(setupCtx, err)

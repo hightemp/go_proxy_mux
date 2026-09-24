@@ -31,3 +31,12 @@ upstreams:
       username: "<upstream-username>"
       password: "<upstream-password>"
     # tls_ca_file: "./certs/upstream-ca.pem" # Only for a private CA.
+  - url: "socks4://proxy3.example.com:1080"
+    auth:
+      enabled: true
+      username: "<upstream-username>" # SOCKS4 USERID; no password field.
+  - url: "socks5://proxy4.example.com:1080"
+    auth:
+      enabled: true
+      username: "<upstream-username>"
+      password: "<upstream-password>"

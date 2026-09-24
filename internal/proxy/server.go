@@ -2,6 +2,7 @@
 package proxy
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/hightemp/go_proxy_mux/internal/balancer"
 	"github.com/hightemp/go_proxy_mux/internal/config"
+	"github.com/hightemp/go_proxy_mux/internal/socks"
 )
 
 // ProxyServer authenticates clients and forwards requests to upstream proxies.
@@ -61,7 +63,6 @@ func NewProxyServer(cfg *config.Config) (*ProxyServer, error) {
 			tlsConfig = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}
 		}
 		transport := &http.Transport{
-			Proxy:                 http.ProxyURL(proxyURL),
 			DialContext:           (&net.Dialer{Timeout: timeout, KeepAlive: 30 * time.Second}).DialContext,
 			TLSClientConfig:       tlsConfig,
 			TLSHandshakeTimeout:   timeout,
@@ -69,6 +70,22 @@ func NewProxyServer(cfg *config.Config) (*ProxyServer, error) {
 			MaxIdleConns:          100,
 			MaxIdleConnsPerHost:   10,
 			IdleConnTimeout:       90 * time.Second,
+		}
+		if proxyURL.Scheme == "socks4" || proxyURL.Scheme == "socks5" {
+			scheme, address := proxyURL.Scheme, proxyURL.Host
+			credentials := socks.Credentials{
+				Enabled:  upstream.Auth.Enabled,
+				Username: upstream.Auth.Username,
+				Password: upstream.Auth.Password,
+			}
+			transport.DialContext = func(ctx context.Context, network, target string) (net.Conn, error) {
+				if network != "tcp" && network != "tcp4" && network != "tcp6" {
+					return nil, fmt.Errorf("SOCKS upstream supports TCP only")
+				}
+				return socks.DialContext(ctx, scheme, address, target, credentials, timeout)
+			}
+		} else {
+			transport.Proxy = http.ProxyURL(proxyURL)
 		}
 		ps.transports = append(ps.transports, transport)
 		ps.upstreamTLS = append(ps.upstreamTLS, tlsConfig)

@@ -18,7 +18,11 @@ func TestLoadConfig(t *testing.T) {
 		{name: "unknown key", yaml: "server:\n  host: 127.0.0.1\n  typo: true\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "typo"},
 		{name: "public HTTP", yaml: "server:\n  host: 0.0.0.0\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "public HTTP listener"},
 		{name: "invalid algorithm", yaml: "proxy:\n  algorithm: mystery\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "proxy.algorithm"},
-		{name: "bad upstream scheme", yaml: "upstreams:\n  - url: socks5://127.0.0.1:8888\n", wantError: "scheme"},
+		{name: "bad upstream scheme", yaml: "upstreams:\n  - url: ftp://127.0.0.1:8888\n", wantError: "scheme"},
+		{name: "socks4 USERID", yaml: "upstreams:\n  - url: socks4://127.0.0.1:1080\n    auth:\n      enabled: true\n      username: test-user\n"},
+		{name: "socks4 password rejected", yaml: "upstreams:\n  - url: socks4://127.0.0.1:1080\n    auth:\n      enabled: true\n      username: test-user\n      password: test-password\n", wantError: "SOCKS4 accepts"},
+		{name: "socks5 credentials", yaml: "upstreams:\n  - url: socks5://127.0.0.1:1080\n    auth:\n      enabled: true\n      username: test-user\n      password: test-password\n"},
+		{name: "socks5 empty password", yaml: "upstreams:\n  - url: socks5://127.0.0.1:1080\n    auth:\n      enabled: true\n      username: test-user\n", wantError: "SOCKS5 requires"},
 		{name: "demo credentials", yaml: "auth:\n  enabled: true\n  username: admin\n  password: password\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "demonstration"},
 		{name: "missing certificate", yaml: "server:\n  tls:\n    cert_file: /no/such/cert.pem\n    key_file: /no/such/key.pem\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "load server TLS"},
 	}
@@ -54,6 +58,8 @@ func TestUpstreamURL(t *testing.T) {
 	}{
 		{"http default port", UpstreamConfig{URL: "http://localhost"}, "localhost:80", false},
 		{"https default port", UpstreamConfig{URL: "https://localhost"}, "localhost:443", false},
+		{"socks4 default port", UpstreamConfig{URL: "socks4://localhost"}, "localhost:1080", false},
+		{"socks5 default port", UpstreamConfig{URL: "socks5://localhost"}, "localhost:1080", false},
 		{"userinfo denied", UpstreamConfig{URL: "http://user:pass@localhost:8888"}, "", true},
 		{"path denied", UpstreamConfig{URL: "http://localhost:8888/path"}, "", true},
 		{"invalid port", UpstreamConfig{URL: "http://localhost:99999"}, "", true},
