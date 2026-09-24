@@ -1,0 +1,10 @@
+services:
+  proxy:
+    build: .
+    command: ["-config", "/app/config.yaml", "-env", ""]
+    ports:
+      - "8380:8380"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./certs:/app/certs:ro
+    restart: unless-stopped

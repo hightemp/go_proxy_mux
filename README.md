@@ -26,13 +26,20 @@ The example intentionally fails validation until its placeholders and TLS files 
 
 Configuration precedence is **process environment → `.env` → YAML → built-in defaults**. The optional `-config` flag selects the YAML fallback, and `-env` selects the env file (`.env` by default; `-env ""` disables it). A missing YAML file is allowed when env settings provide the upstream list. `MUX_PROXY_TIMEOUT` and YAML `proxy.timeout` remain integers in seconds. Other timeout variables accept Go duration strings such as `15s` and `2m`.
 
+To run directly from YAML while a local `.env` exists, use `./go_proxy_mux -config config.yaml -env ""`.
+
 For local HTTP development, set `MUX_SERVER_HOST=127.0.0.1` and leave both `MUX_SERVER_TLS_*_FILE` values empty; client authentication is optional on loopback. A non-loopback HTTP listener requires `MUX_SERVER_ALLOW_INSECURE_PUBLIC_HTTP=true`. A non-loopback listener without client authentication requires `MUX_SERVER_ALLOW_UNAUTHENTICATED_PUBLIC_PROXY=true`. Each exception must be enabled explicitly.
 
 Choose each upstream with a URL scheme: `http://`, `https://`, `socks4://`, or `socks5://`. HTTPS upstreams use certificate verification against system roots; for a private CA, set `MUX_UPSTREAM_N_TLS_CA_FILE`. SOCKS4 uses an optional `MUX_UPSTREAM_N_AUTH_USERNAME` as USERID and has no password; domain destinations use SOCKS4a, while IPv6 destinations require SOCKS5. SOCKS5 supports no authentication or username/password authentication. Destination hostnames are resolved by the SOCKS upstream. Keep credentials in the `AUTH_*` variables, not in the URL. SOCKS5 username/password is sent to that upstream without encryption.
 
 ## Docker Compose
 
-Prepare `.env` and a `certs/` directory containing the configured certificate and key, then run `docker compose up --build`. Compose passes `.env` to the container with raw values and publishes `MUX_PUBLISH_HOST:MUX_PUBLISH_PORT` to `MUX_SERVER_PORT`. It requires Docker Compose 2.30 or newer. Edit `.env` to change application settings in Compose; a shell override of `MUX_SERVER_PORT` also updates the published port. Certificates are mounted read-only; neither `.env` nor TLS keys are included in the image. Certificate acquisition is external to this project.
+There are two independent Compose variants:
+
+- **`.env`:** Prepare `.env` and the configured certificate files, then run `docker compose up --build`. Compose passes `.env` to the container with raw values and publishes `MUX_PUBLISH_HOST:MUX_PUBLISH_PORT` to `MUX_SERVER_PORT`. This variant requires Docker Compose 2.30 or newer.
+- **`config.yaml`:** Copy `config.example.yaml` to `config.yaml` if needed, fill its placeholders, set its mode to `0600`, and prepare the configured certificate files. Run `docker compose -f docker-compose.config.yml up --build`. This variant mounts `config.yaml` read-only, disables `.env` loading in the application, and publishes port `8380`. If `server.port` differs, update the port mapping in that Compose file. In a container, set `server.host` to `0.0.0.0`.
+
+Both variants mount `certs/` read-only. Neither configuration nor TLS keys are included in the image. Certificate acquisition is external to this project.
 
 ## Request handling
 
