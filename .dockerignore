@@ -12,5 +12,6 @@ README.md
 Makefile
 docker-compose.yml
 /go_proxy_mux
+/go_proxy_mux_static
 /go_proxy_mux-*
 *.exe

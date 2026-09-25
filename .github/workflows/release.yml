@@ -30,6 +30,11 @@ jobs:
             echo "Release tag must be vMAJOR.MINOR.PATCH with optional prerelease suffix" >&2
             exit 1
           fi
+          version="$(tr -d '[:space:]' < VERSION)"
+          if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "Release tag must match VERSION (v$version)" >&2
+            exit 1
+          fi
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

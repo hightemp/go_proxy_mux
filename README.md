@@ -7,6 +7,7 @@
 [![Docker Pulls](https://img.shields.io/docker/pulls/hightemp/go_proxy_mux.svg)](https://hub.docker.com/r/hightemp/go_proxy_mux)
 [![Tests](https://github.com/hightemp/go_proxy_mux/actions/workflows/test.yml/badge.svg)](https://github.com/hightemp/go_proxy_mux/actions/workflows/test.yml)
 [![Release](https://github.com/hightemp/go_proxy_mux/actions/workflows/release.yml/badge.svg)](https://github.com/hightemp/go_proxy_mux/actions/workflows/release.yml)
+[![](https://asdertasd.site/counter/go_proxy_mux)](https://asdertasd.site/counter/go_proxy_mux)
 
 An authenticated HTTP proxy that distributes HTTP and CONNECT requests across HTTP, HTTPS, SOCKS4, or SOCKS5 upstream proxies. Its TLS listener supports HTTP/1.1 and HTTP/2 CONNECT.
 
@@ -61,6 +62,10 @@ The listener limits active TCP connections and CONNECT tunnels. A tunnel closes 
 
 ## Releases
 
-GitHub Actions runs [CI](.github/workflows/test.yml) on pushes and pull requests. Pushing a semantic version tag such as `v1.2.3` starts the [release workflow](.github/workflows/release.yml) after CI passes. It publishes Linux, macOS, and Windows binaries plus examples and `SHA256SUMS` to GitHub Releases, and multi-platform `linux/amd64` and `linux/arm64` images to `hightemp/go_proxy_mux` on Docker Hub. Stable tags also update `latest`; prerelease tags do not.
+GitHub Actions runs [CI](.github/workflows/test.yml) on pushes and pull requests. Set the plain semantic version in [VERSION](VERSION), then run `make release` from `main`. It runs the local checks and build, commits all project changes, creates an annotated `v<version>` tag, and atomically pushes `main` and the tag. It refuses to replace an existing tag or release from a branch behind `origin/main`; the release workflow also checks that its tag matches `VERSION`.
 
-Set repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` to a Docker Hub account and access token allowed to push `hightemp/go_proxy_mux` before tagging. The workflow verifies the published Docker platforms and downloaded release checksums. `make docker-build VERSION=dev` creates a local development image without publishing it.
+The tag starts the [release workflow](.github/workflows/release.yml) after CI passes. It publishes Linux, macOS, and Windows binaries plus examples and `SHA256SUMS` to GitHub Releases, and multi-platform `linux/amd64` and `linux/arm64` images to `hightemp/go_proxy_mux` on Docker Hub. Stable tags also update `latest`; prerelease tags do not.
+
+Set repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` to a Docker Hub account and access token allowed to push `hightemp/go_proxy_mux` before tagging. The workflow verifies the published Docker platforms and downloaded release checksums. `make docker-build` tags a local image with the value from `VERSION`; it does not publish it.
+
+`make build` creates a normal binary for the current system. `make build-static` creates `go_proxy_mux_static` with CGO disabled. The `build-linux`, `build-windows`, `build-darwin`, and `build-all` targets have been removed; GitHub Actions builds release assets for all six supported platforms.
