@@ -1,4 +1,5 @@
 .git
+.github
 .kilo
 config.yaml
 config.yaml.*

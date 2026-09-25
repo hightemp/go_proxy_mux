@@ -1,5 +1,7 @@
 BINARY_NAME=go_proxy_mux
 CMD_PACKAGE=./cmd/go_proxy_mux
+DOCKER_IMAGE=hightemp/go_proxy_mux
+VERSION ?= dev
 LDFLAGS=-ldflags "-s -w"
 CGO_ENABLED=0
 
@@ -20,10 +22,10 @@ build-darwin:
 build-all: build-linux build-windows build-darwin
 
 docker-build:
-	docker build -t hightemp/go_proxy_mux:1.0.2 .
+	docker build -t $(DOCKER_IMAGE):$(VERSION) .
 
 docker-push:
-	docker push hightemp/go_proxy_mux:1.0.2
+	docker push $(DOCKER_IMAGE):$(VERSION)
 
 clean:
 	rm -f $(BINARY_NAME) $(BINARY_NAME)-*

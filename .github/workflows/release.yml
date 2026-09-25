@@ -1,0 +1,150 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    uses: ./.github/workflows/test.yml
+
+  docker:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate version tag
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag must be vMAJOR.MINOR.PATCH with optional prerelease suffix" >&2
+            exit 1
+          fi
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: hightemp/go_proxy_mux
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}}
+
+      - name: Build and push multi-platform image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Update stable latest tag
+        if: ${{ !contains(github.ref_name, '-') }}
+        shell: bash
+        run: docker buildx imagetools create -t hightemp/go_proxy_mux:latest "hightemp/go_proxy_mux:${GITHUB_REF_NAME#v}"
+
+      - name: Verify published platforms
+        shell: bash
+        run: |
+          docker buildx imagetools inspect "hightemp/go_proxy_mux:${GITHUB_REF_NAME#v}" > manifest.txt
+          grep -q 'linux/amd64' manifest.txt
+          grep -q 'linux/arm64' manifest.txt
+
+      - name: Verify stable latest tag
+        if: ${{ !contains(github.ref_name, '-') }}
+        run: docker buildx imagetools inspect hightemp/go_proxy_mux:latest
+
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v4
+        continue-on-error: true
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: hightemp/go_proxy_mux
+
+  release:
+    needs: [quality, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build release assets and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            GOOS="${target%/*}"
+            GOARCH="${target#*/}"
+            output="dist/go_proxy_mux_${GOOS}_${GOARCH}"
+            if [[ "$GOOS" == windows ]]; then output="${output}.exe"; fi
+            CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
+              go build -trimpath -ldflags='-s -w' -o "$output" ./cmd/go_proxy_mux
+          done
+          cp config.example.yaml .env.example docker-compose.yml docker-compose.config.yml dist/
+          (cd dist && sha256sum go_proxy_mux_* config.example.yaml .env.example docker-compose.yml docker-compose.config.yml > SHA256SUMS)
+          (cd dist && sha256sum -c SHA256SUMS)
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          fail_on_unmatched_files: true
+          files: |
+            dist/go_proxy_mux_*
+            dist/config.example.yaml
+            dist/.env.example
+            dist/docker-compose.yml
+            dist/docker-compose.config.yml
+            dist/SHA256SUMS
+
+      - name: Verify published assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p downloaded
+          for attempt in 1 2 3; do
+            if gh release download "$GITHUB_REF_NAME" --dir downloaded --clobber &&
+               (cd downloaded && sha256sum -c SHA256SUMS); then
+              exit 0
+            fi
+            if [[ "$attempt" == 3 ]]; then exit 1; fi
+            sleep 5
+          done

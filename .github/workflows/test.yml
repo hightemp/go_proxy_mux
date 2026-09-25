@@ -1,0 +1,70 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify modules
+        run: go mod verify
+
+      - name: Check module files
+        run: go mod tidy -diff
+
+      - name: Check formatting
+        run: make format-check
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test with race detector
+        run: go test -race ./...
+
+      - name: Validate Compose variants
+        run: |
+          cp .env.example .env
+          cp config.example.yaml config.yaml
+          docker compose config --quiet
+          docker compose -f docker-compose.config.yml config --quiet
+
+      - name: Build Docker image
+        run: docker build -t go_proxy_mux:ci .
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Lint Go
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.8

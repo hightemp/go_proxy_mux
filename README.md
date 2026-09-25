@@ -1,5 +1,13 @@
 # go_proxy_mux
 
+[![GitHub Repo](https://img.shields.io/badge/github-hightemp%2Fgo__proxy__mux-blue?logo=github)](https://github.com/hightemp/go_proxy_mux)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/hightemp/go_proxy_mux)](go.mod)
+[![GitHub release](https://img.shields.io/github/v/release/hightemp/go_proxy_mux)](https://github.com/hightemp/go_proxy_mux/releases)
+[![GitHub Downloads](https://img.shields.io/github/downloads/hightemp/go_proxy_mux/total)](https://github.com/hightemp/go_proxy_mux/releases)
+[![Docker Pulls](https://img.shields.io/docker/pulls/hightemp/go_proxy_mux.svg)](https://hub.docker.com/r/hightemp/go_proxy_mux)
+[![Tests](https://github.com/hightemp/go_proxy_mux/actions/workflows/test.yml/badge.svg)](https://github.com/hightemp/go_proxy_mux/actions/workflows/test.yml)
+[![Release](https://github.com/hightemp/go_proxy_mux/actions/workflows/release.yml/badge.svg)](https://github.com/hightemp/go_proxy_mux/actions/workflows/release.yml)
+
 An authenticated HTTP proxy that distributes HTTP and CONNECT requests across HTTP, HTTPS, SOCKS4, or SOCKS5 upstream proxies. Its TLS listener supports HTTP/1.1 and HTTP/2 CONNECT.
 
 ## Project layout
@@ -50,3 +58,9 @@ The listener limits active TCP connections and CONNECT tunnels. A tunnel closes 
 ## Checks
 
 `make ci` runs formatting, `go vet`, `golangci-lint`, and race-enabled tests. `make docker-build` builds the container image.
+
+## Releases
+
+GitHub Actions runs [CI](.github/workflows/test.yml) on pushes and pull requests. Pushing a semantic version tag such as `v1.2.3` starts the [release workflow](.github/workflows/release.yml) after CI passes. It publishes Linux, macOS, and Windows binaries plus examples and `SHA256SUMS` to GitHub Releases, and multi-platform `linux/amd64` and `linux/arm64` images to `hightemp/go_proxy_mux` on Docker Hub. Stable tags also update `latest`; prerelease tags do not.
+
+Set repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` to a Docker Hub account and access token allowed to push `hightemp/go_proxy_mux` before tagging. The workflow verifies the published Docker platforms and downloaded release checksums. `make docker-build VERSION=dev` creates a local development image without publishing it.
