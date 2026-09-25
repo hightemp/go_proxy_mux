@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -120,13 +121,13 @@ func waitForListener(t *testing.T, address string, result <-chan error) {
 	t.Fatal("listener did not start")
 }
 
-func TestConnectionLimit(t *testing.T) {
+func TestConnectionLimitPerIP(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	limited := newLimitedListener(listener, 1)
-	defer limited.Close()
+	limited := newLimitedListener(listener, 2, 1)
+	defer func() { _ = limited.Close() }()
 	accepted := make(chan net.Conn, 1)
 	go func() {
 		connection, err := limited.Accept()
@@ -138,19 +139,72 @@ func TestConnectionLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer first.Close()
+	defer func() { _ = first.Close() }()
 	serverFirst := <-accepted
-	defer serverFirst.Close()
+	defer func() { _ = serverFirst.Close() }()
 	go func() { _, _ = limited.Accept() }()
 	second, err := net.Dial("tcp", listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer second.Close()
+	defer func() { _ = second.Close() }()
 	_ = second.SetReadDeadline(time.Now().Add(time.Second))
 	one := make([]byte, 1)
 	_, err = second.Read(one)
 	if err != io.EOF {
 		t.Fatalf("second connection read error = %v, want EOF", err)
+	}
+}
+
+func TestHTTPServerNetworkSettings(t *testing.T) {
+	cfg := config.Default()
+	cfg.Server.MaxHeaderBytes = 8192
+	cfg.Server.HTTP2MaxConcurrentStreams = 32
+	cfg.Server.HTTP2SendPingTimeout = config.Duration(3 * time.Second)
+	cfg.Server.HTTP2PingTimeout = config.Duration(4 * time.Second)
+	cfg.Server.HTTP2WriteByteTimeout = config.Duration(5 * time.Second)
+	server := newHTTPServer(&cfg, http.NotFoundHandler())
+	if server.MaxHeaderBytes != 8192 || server.HTTP2.MaxConcurrentStreams != 32 || server.HTTP2.SendPingTimeout != 3*time.Second || server.HTTP2.PingTimeout != 4*time.Second || server.HTTP2.WriteByteTimeout != 5*time.Second {
+		t.Fatal("HTTP server network settings were not applied")
+	}
+	cfg.Server.HTTP2MaxConcurrentStreams = 0
+	if got := effectiveHTTP2MaxConcurrentStreams(&cfg); got != cfg.Proxy.MaxTunnelsPerIP {
+		t.Fatalf("derived HTTP/2 stream limit = %d", got)
+	}
+}
+
+func TestRequestHeaderLimit(t *testing.T) {
+	cfg := config.Default()
+	cfg.Server.Port = portOfUnusedAddress(t)
+	cfg.Server.MaxHeaderBytes = 1024
+	cfg.Upstreams = []config.UpstreamConfig{{URL: "http://127.0.0.1:1"}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() { result <- Run(ctx, &cfg) }()
+	address := net.JoinHostPort(cfg.Server.Host, strconv.Itoa(cfg.Server.Port))
+	waitForListener(t, address, result)
+	connection, err := net.DialTimeout("tcp", address, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = connection.Close() }()
+	_ = connection.SetDeadline(time.Now().Add(2 * time.Second))
+	_, err = io.WriteString(connection, "GET http://example.test/ HTTP/1.1\r\nHost: example.test\r\nX-Large: "+strings.Repeat("a", 16<<10)+"\r\n\r\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := bufio.NewReader(connection).ReadString('\n')
+	if err != nil || !strings.Contains(status, "431") {
+		t.Fatalf("status = %q, error = %v, want HTTP 431", status, err)
+	}
+	cancel()
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("server did not shut down")
 	}
 }

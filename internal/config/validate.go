@@ -27,6 +27,15 @@ func Validate(cfg *Config) error {
 	if cfg.Server.MaxConnections < 1 {
 		return fmt.Errorf("server.max_connections must be positive")
 	}
+	if cfg.Server.MaxConnectionsPerIP < 1 || cfg.Server.MaxConnectionsPerIP > cfg.Server.MaxConnections {
+		return fmt.Errorf("server.max_connections_per_ip must be between 1 and server.max_connections")
+	}
+	if cfg.Server.MaxHeaderBytes < 1024 || cfg.Server.MaxHeaderBytes > 16<<20 {
+		return fmt.Errorf("server.max_header_bytes must be between 1024 and 16777216")
+	}
+	if cfg.Server.HTTP2SendPingTimeout < 0 || cfg.Server.HTTP2PingTimeout < 0 || cfg.Server.HTTP2WriteByteTimeout < 0 {
+		return fmt.Errorf("server HTTP/2 timeouts must not be negative")
+	}
 	if cfg.Server.ReadHeaderTimeout <= 0 || cfg.Server.IdleTimeout <= 0 || cfg.Server.ShutdownTimeout <= 0 {
 		return fmt.Errorf("server timeouts must be positive")
 	}
@@ -69,6 +78,21 @@ func Validate(cfg *Config) error {
 	}
 	if cfg.Proxy.Timeout < 1 || cfg.Proxy.MaxTunnels < 1 || cfg.Proxy.TunnelIdleTimeout <= 0 || cfg.Proxy.FailoverCooldown <= 0 {
 		return fmt.Errorf("proxy timeout and limits must be positive")
+	}
+	if cfg.Proxy.MaxTunnelsPerIP < 1 || cfg.Proxy.MaxTunnelsPerIP > cfg.Proxy.MaxTunnels {
+		return fmt.Errorf("proxy.max_tunnels_per_ip must be between 1 and proxy.max_tunnels")
+	}
+	if cfg.Server.HTTP2MaxConcurrentStreams < 0 || cfg.Server.HTTP2MaxConcurrentStreams > cfg.Proxy.MaxTunnels || cfg.Server.HTTP2MaxConcurrentStreams > cfg.Proxy.MaxTunnelsPerIP {
+		return fmt.Errorf("server.http2_max_concurrent_streams must be 0 or no greater than the tunnel limits")
+	}
+	if cfg.Proxy.Network != "auto" && cfg.Proxy.Network != "tcp4" && cfg.Proxy.Network != "tcp6" {
+		return fmt.Errorf("proxy.network must be auto, tcp4, or tcp6")
+	}
+	if cfg.Proxy.DialTimeout <= 0 || cfg.Proxy.DialKeepAlive <= 0 || cfg.Proxy.TLSHandshakeTimeout <= 0 || cfg.Proxy.ResponseHeaderTimeout <= 0 || cfg.Proxy.IdleConnTimeout <= 0 || cfg.Proxy.ExpectContinueTimeout < 0 {
+		return fmt.Errorf("proxy transport timeouts must be positive (expect_continue_timeout may be zero)")
+	}
+	if cfg.Proxy.MaxIdleConns < 0 || cfg.Proxy.MaxIdleConnsPerHost < 0 || cfg.Proxy.MaxConnsPerHost < 0 {
+		return fmt.Errorf("proxy connection pool limits must not be negative")
 	}
 	if len(cfg.Upstreams) == 0 {
 		return fmt.Errorf("upstreams must contain at least one proxy")

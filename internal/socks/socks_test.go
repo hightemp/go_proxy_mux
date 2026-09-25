@@ -11,7 +11,7 @@ import (
 )
 
 func TestSOCKS4RejectsIPv6WithoutDialing(t *testing.T) {
-	_, err := DialContext(context.Background(), "socks4", "127.0.0.1:1", "[::1]:443", Credentials{}, time.Second)
+	_, err := DialContext(context.Background(), "socks4", "127.0.0.1:1", "[::1]:443", Credentials{}, DialOptions{Network: "tcp", Timeout: time.Second})
 	if err == nil || !strings.Contains(err.Error(), "IPv6") {
 		t.Fatalf("error = %v, want IPv6 rejection", err)
 	}
@@ -22,7 +22,7 @@ func TestSOCKS5AuthenticationRejected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	result := make(chan error, 1)
 	go func() {
 		connection, err := listener.Accept()
@@ -30,7 +30,7 @@ func TestSOCKS5AuthenticationRejected(t *testing.T) {
 			result <- err
 			return
 		}
-		defer connection.Close()
+		defer func() { _ = connection.Close() }()
 		var greeting [3]byte
 		if _, err := io.ReadFull(connection, greeting[:]); err != nil {
 			result <- err
@@ -70,7 +70,7 @@ func TestSOCKS5AuthenticationRejected(t *testing.T) {
 		}
 		result <- nil
 	}()
-	_, err = DialContext(context.Background(), "socks5", listener.Addr().String(), "example.test:443", Credentials{Enabled: true, Username: "test-user", Password: "test-password"}, time.Second)
+	_, err = DialContext(context.Background(), "socks5", listener.Addr().String(), "example.test:443", Credentials{Enabled: true, Username: "test-user", Password: "test-password"}, DialOptions{Network: "tcp", Timeout: time.Second})
 	if err == nil || !strings.Contains(err.Error(), "authentication rejected") {
 		t.Fatalf("error = %v, want auth rejection", err)
 	}
@@ -84,7 +84,7 @@ func TestSOCKS5SetupCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	done := make(chan struct{})
 	go func() {
 		connection, err := listener.Accept()
@@ -92,15 +92,16 @@ func TestSOCKS5SetupCancellation(t *testing.T) {
 			close(done)
 			return
 		}
-		defer connection.Close()
+		defer func() { _ = connection.Close() }()
 		_, _ = io.Copy(io.Discard, connection)
 		close(done)
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	_, err = DialContext(ctx, "socks5", listener.Addr().String(), "example.test:443", Credentials{}, time.Second)
+	_, err = DialContext(ctx, "socks5", listener.Addr().String(), "example.test:443", Credentials{}, DialOptions{Network: "tcp", Timeout: time.Second})
 	var networkErr net.Error
-	if !errors.Is(err, context.DeadlineExceeded) && !(errors.As(err, &networkErr) && networkErr.Timeout()) {
+	timedOut := errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &networkErr) && networkErr.Timeout())
+	if !timedOut {
 		t.Fatalf("error = %v, want timeout", err)
 	}
 	select {
@@ -115,7 +116,7 @@ func TestSOCKS5IPv6Destination(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	result := make(chan error, 1)
 	go func() {
 		connection, err := listener.Accept()
@@ -123,7 +124,7 @@ func TestSOCKS5IPv6Destination(t *testing.T) {
 			result <- err
 			return
 		}
-		defer connection.Close()
+		defer func() { _ = connection.Close() }()
 		var greeting [3]byte
 		if _, err := io.ReadFull(connection, greeting[:]); err != nil {
 			result <- err
@@ -148,7 +149,7 @@ func TestSOCKS5IPv6Destination(t *testing.T) {
 		}
 		result <- nil
 	}()
-	connection, err := DialContext(context.Background(), "socks5", listener.Addr().String(), "[::1]:443", Credentials{}, time.Second)
+	connection, err := DialContext(context.Background(), "socks5", listener.Addr().String(), "[::1]:443", Credentials{}, DialOptions{Network: "tcp", Timeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}

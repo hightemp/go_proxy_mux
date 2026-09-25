@@ -19,7 +19,7 @@ An HTTP/HTTPS forward proxy that distributes client requests across HTTP, HTTPS,
 - SOCKS4a for destination hostnames, and SOCKS5 for hostnames and IPv6 destinations
 - Temporary exclusion of an upstream after a network or CONNECT setup failure
 - One alternate attempt for bodyless GET/HEAD and for CONNECT before success; requests with bodies are not replayed
-- Limits for client TCP connections and CONNECT tunnels, tunnel idle timeout, and graceful shutdown
+- Global and per-IP limits for client TCP connections and CONNECT tunnels, configurable Go HTTP/TLS timeouts and connection pools, and graceful shutdown
 - Configuration through `.env`, process environment, or strict YAML
 
 ## Installation
@@ -54,6 +54,8 @@ docker run -d --name go_proxy_mux -p 8380:8380 \
 Use [Docker Compose](#docker-compose) for either `.env` or `config.yaml` configuration.
 
 ### Build from source
+
+Go 1.26.7 or newer is required.
 
 ```sh
 git clone https://github.com/hightemp/go_proxy_mux.git
@@ -99,17 +101,33 @@ Every application setting is represented in [`.env.example`](.env.example). `MUX
 | `MUX_SERVER_ALLOW_INSECURE_PUBLIC_HTTP` | Explicitly allow non-loopback HTTP |
 | `MUX_SERVER_ALLOW_UNAUTHENTICATED_PUBLIC_PROXY` | Explicitly allow a non-loopback listener without client auth |
 | `MUX_SERVER_MAX_CONNECTIONS` | Maximum active client TCP connections |
+| `MUX_SERVER_MAX_CONNECTIONS_PER_IP` | Maximum active client connections per source IP |
+| `MUX_SERVER_MAX_HEADER_BYTES` | Incoming HTTP request-header limit |
+| `MUX_SERVER_HTTP2_MAX_CONCURRENT_STREAMS` | HTTP/2 stream limit; `0` derives it from tunnel limits |
+| `MUX_SERVER_HTTP2_SEND_PING_TIMEOUT`, `MUX_SERVER_HTTP2_PING_TIMEOUT`, `MUX_SERVER_HTTP2_WRITE_BYTE_TIMEOUT` | HTTP/2 connection health and stalled-write timeouts |
 | `MUX_SERVER_READ_HEADER_TIMEOUT`, `MUX_SERVER_IDLE_TIMEOUT`, `MUX_SERVER_SHUTDOWN_TIMEOUT` | Listener and shutdown timeouts |
 | `MUX_AUTH_ENABLED`, `MUX_AUTH_USERNAME`, `MUX_AUTH_PASSWORD` | Client Basic authentication |
 | `MUX_PROXY_ALGORITHM` | `roundrobin` or `random` |
 | `MUX_PROXY_TIMEOUT` | HTTP request and CONNECT setup timeout, in seconds |
+| `MUX_PROXY_NETWORK` | Outbound `auto`, `tcp4`, or `tcp6` dialing |
+| `MUX_PROXY_DIAL_TIMEOUT`, `MUX_PROXY_DIAL_KEEP_ALIVE` | TCP dial and keep-alive durations |
+| `MUX_PROXY_TLS_HANDSHAKE_TIMEOUT`, `MUX_PROXY_RESPONSE_HEADER_TIMEOUT` | Outbound TLS and response-header deadlines |
+| `MUX_PROXY_IDLE_CONN_TIMEOUT`, `MUX_PROXY_EXPECT_CONTINUE_TIMEOUT` | HTTP transport idle and `Expect: 100-continue` timeouts |
+| `MUX_PROXY_MAX_IDLE_CONNS`, `MUX_PROXY_MAX_IDLE_CONNS_PER_HOST`, `MUX_PROXY_MAX_CONNS_PER_HOST` | HTTP transport connection-pool limits |
 | `MUX_PROXY_MAX_TUNNELS`, `MUX_PROXY_TUNNEL_IDLE_TIMEOUT` | Active tunnel limit and idle timeout |
+| `MUX_PROXY_MAX_TUNNELS_PER_IP` | Maximum active tunnels per source IP |
 | `MUX_PROXY_FAILOVER_COOLDOWN` | Time to exclude a failed upstream |
 | `MUX_UPSTREAM_COUNT` | Number of upstream entries |
 | `MUX_UPSTREAM_N_URL` | Upstream URL: `http://`, `https://`, `socks4://`, or `socks5://` |
 | `MUX_UPSTREAM_N_AUTH_ENABLED`, `MUX_UPSTREAM_N_AUTH_USERNAME`, `MUX_UPSTREAM_N_AUTH_PASSWORD` | Credentials for upstream N |
 | `MUX_UPSTREAM_N_TLS_CA_FILE` | Optional private CA file for an HTTPS upstream |
 | `MUX_PUBLISH_HOST`, `MUX_PUBLISH_PORT` | Host-side Compose binding only |
+
+### Go network stack tuning
+
+`MUX_PROXY_TIMEOUT` remains the overall deadline for a forwarded HTTP request or CONNECT setup. The separate dial, TLS handshake, and response-header timeouts apply within that deadline. `MUX_PROXY_NETWORK` selects automatic, IPv4-only, or IPv6-only TCP dialing to an upstream proxy; SOCKS upstreams still resolve destination hostnames themselves.
+
+The transport settings control idle connection reuse and limits per destination host. `MUX_PROXY_MAX_CONNS_PER_HOST=0` leaves the total per-host limit unlimited. The HTTP/2 SETTINGS stream limit defaults to the lower of the global and per-IP tunnel limits; ping and stalled-write timeouts use Go's `net/http.HTTP2Config`.
 
 ### YAML configuration
 
@@ -159,7 +177,7 @@ SOCKS4 supports an optional `USERID` in `auth.username` and no password. Domain 
 
 ### Resource limits
 
-`max_connections` bounds active client TCP connections; `max_tunnels` bounds concurrent CONNECT tunnels across HTTP/1.1 and HTTP/2. A tunnel closes after `tunnel_idle_timeout` without traffic. SIGINT and SIGTERM stop new requests and close tracked tunnels within `shutdown_timeout`.
+`max_connections` and `max_tunnels` bound active client TCP connections and CONNECT tunnels globally; their `*_per_ip` counterparts also limit each source IP and cannot exceed the global limits. `max_header_bytes` bounds incoming request headers. The HTTP/2 stream limit defaults to the lower tunnel limit and cannot exceed either tunnel limit; ping and stalled-write timeouts can be tuned separately. A tunnel closes after `tunnel_idle_timeout` without traffic. SIGINT and SIGTERM stop new requests and close tracked tunnels within `shutdown_timeout`.
 
 ## Docker Compose
 

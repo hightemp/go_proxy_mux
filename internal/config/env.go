@@ -17,7 +17,7 @@ func readEnvValues(path string) (map[string]string, error) {
 			return nil, fmt.Errorf("read env file: %w", err)
 		}
 		if err == nil {
-			defer file.Close()
+			defer func() { _ = file.Close() }()
 			scanner := bufio.NewScanner(file)
 			scanner.Buffer(make([]byte, 0, 4096), 1<<20)
 			for lineNumber := 1; scanner.Scan(); lineNumber++ {
@@ -80,6 +80,7 @@ func applyEnvOverrides(cfg *Config, values map[string]string) error {
 		{"MUX_AUTH_USERNAME", &cfg.Auth.Username},
 		{"MUX_AUTH_PASSWORD", &cfg.Auth.Password},
 		{"MUX_PROXY_ALGORITHM", &cfg.Proxy.Algorithm},
+		{"MUX_PROXY_NETWORK", &cfg.Proxy.Network},
 	}
 	for _, entry := range stringsToApply {
 		known[entry.name] = true
@@ -111,8 +112,15 @@ func applyEnvOverrides(cfg *Config, values map[string]string) error {
 	}{
 		{"MUX_SERVER_PORT", &cfg.Server.Port},
 		{"MUX_SERVER_MAX_CONNECTIONS", &cfg.Server.MaxConnections},
+		{"MUX_SERVER_MAX_CONNECTIONS_PER_IP", &cfg.Server.MaxConnectionsPerIP},
+		{"MUX_SERVER_MAX_HEADER_BYTES", &cfg.Server.MaxHeaderBytes},
+		{"MUX_SERVER_HTTP2_MAX_CONCURRENT_STREAMS", &cfg.Server.HTTP2MaxConcurrentStreams},
 		{"MUX_PROXY_TIMEOUT", &cfg.Proxy.Timeout},
+		{"MUX_PROXY_MAX_IDLE_CONNS", &cfg.Proxy.MaxIdleConns},
+		{"MUX_PROXY_MAX_IDLE_CONNS_PER_HOST", &cfg.Proxy.MaxIdleConnsPerHost},
+		{"MUX_PROXY_MAX_CONNS_PER_HOST", &cfg.Proxy.MaxConnsPerHost},
 		{"MUX_PROXY_MAX_TUNNELS", &cfg.Proxy.MaxTunnels},
+		{"MUX_PROXY_MAX_TUNNELS_PER_IP", &cfg.Proxy.MaxTunnelsPerIP},
 	}
 	for _, entry := range integers {
 		known[entry.name] = true
@@ -131,6 +139,15 @@ func applyEnvOverrides(cfg *Config, values map[string]string) error {
 		{"MUX_SERVER_READ_HEADER_TIMEOUT", &cfg.Server.ReadHeaderTimeout},
 		{"MUX_SERVER_IDLE_TIMEOUT", &cfg.Server.IdleTimeout},
 		{"MUX_SERVER_SHUTDOWN_TIMEOUT", &cfg.Server.ShutdownTimeout},
+		{"MUX_SERVER_HTTP2_SEND_PING_TIMEOUT", &cfg.Server.HTTP2SendPingTimeout},
+		{"MUX_SERVER_HTTP2_PING_TIMEOUT", &cfg.Server.HTTP2PingTimeout},
+		{"MUX_SERVER_HTTP2_WRITE_BYTE_TIMEOUT", &cfg.Server.HTTP2WriteByteTimeout},
+		{"MUX_PROXY_DIAL_TIMEOUT", &cfg.Proxy.DialTimeout},
+		{"MUX_PROXY_DIAL_KEEP_ALIVE", &cfg.Proxy.DialKeepAlive},
+		{"MUX_PROXY_TLS_HANDSHAKE_TIMEOUT", &cfg.Proxy.TLSHandshakeTimeout},
+		{"MUX_PROXY_RESPONSE_HEADER_TIMEOUT", &cfg.Proxy.ResponseHeaderTimeout},
+		{"MUX_PROXY_IDLE_CONN_TIMEOUT", &cfg.Proxy.IdleConnTimeout},
+		{"MUX_PROXY_EXPECT_CONTINUE_TIMEOUT", &cfg.Proxy.ExpectContinueTimeout},
 		{"MUX_PROXY_TUNNEL_IDLE_TIMEOUT", &cfg.Proxy.TunnelIdleTimeout},
 		{"MUX_PROXY_FAILOVER_COOLDOWN", &cfg.Proxy.FailoverCooldown},
 	}

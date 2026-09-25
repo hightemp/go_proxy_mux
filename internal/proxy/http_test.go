@@ -72,7 +72,7 @@ func TestHTTPForwardingAndAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusFound {
 		t.Fatalf("status = %d, want 302", response.StatusCode)
 	}
@@ -252,5 +252,98 @@ func TestUpstream407BecomesBadGateway(t *testing.T) {
 	_ = response.Body.Close()
 	if response.StatusCode != http.StatusBadGateway || response.Header.Get("Proxy-Authenticate") != "" {
 		t.Fatalf("response status = %d, upstream challenge present = %v", response.StatusCode, response.Header.Get("Proxy-Authenticate") != "")
+	}
+}
+
+func TestResponseHeaderTimeout(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(time.Second):
+			w.WriteHeader(http.StatusOK)
+		case <-r.Context().Done():
+		}
+	}))
+	defer upstream.Close()
+	cfg := config.Default()
+	cfg.Proxy.Timeout = 5
+	cfg.Proxy.ResponseHeaderTimeout = config.Duration(100 * time.Millisecond)
+	cfg.Upstreams = []config.UpstreamConfig{{URL: upstream.URL}}
+	proxyServer := newTestProxy(t, &cfg)
+	start := time.Now()
+	response, err := clientThroughProxy(t, proxyServer.URL, "", "").Get("http://example.test/slow")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusGatewayTimeout || time.Since(start) > time.Second {
+		t.Fatalf("status = %d after %s", response.StatusCode, time.Since(start))
+	}
+}
+
+func TestUpstreamTLSHandshakeTimeout(t *testing.T) {
+	address := startRawUpstream(t, func(conn net.Conn) {
+		time.Sleep(300 * time.Millisecond)
+	})
+	cfg := config.Default()
+	cfg.Proxy.Timeout = 5
+	cfg.Proxy.TLSHandshakeTimeout = config.Duration(80 * time.Millisecond)
+	cfg.Upstreams = []config.UpstreamConfig{{URL: strings.Replace(address, "http://", "https://", 1)}}
+	proxyServer := newTestProxy(t, &cfg)
+	response, err := clientThroughProxy(t, proxyServer.URL, "", "").Get("http://example.test/path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusGatewayTimeout {
+		t.Fatalf("status = %d, want 504", response.StatusCode)
+	}
+}
+
+func TestOutboundNetworkFamily(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer upstream.Close()
+	for _, tt := range []struct {
+		network string
+		status  int
+	}{
+		{"tcp4", http.StatusNoContent},
+		{"tcp6", http.StatusBadGateway},
+	} {
+		t.Run(tt.network, func(t *testing.T) {
+			cfg := config.Default()
+			cfg.Proxy.Network = tt.network
+			cfg.Upstreams = []config.UpstreamConfig{{URL: upstream.URL}}
+			proxyServer := newTestProxy(t, &cfg)
+			response, err := clientThroughProxy(t, proxyServer.URL, "", "").Get("http://example.test/path")
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = response.Body.Close()
+			if response.StatusCode != tt.status {
+				t.Fatalf("status = %d, want %d", response.StatusCode, tt.status)
+			}
+		})
+	}
+}
+
+func TestTransportPoolSettings(t *testing.T) {
+	cfg := config.Default()
+	cfg.Proxy.MaxIdleConns = 17
+	cfg.Proxy.MaxIdleConnsPerHost = 4
+	cfg.Proxy.MaxConnsPerHost = 9
+	cfg.Proxy.IdleConnTimeout = config.Duration(11 * time.Second)
+	cfg.Proxy.TLSHandshakeTimeout = config.Duration(12 * time.Second)
+	cfg.Proxy.ResponseHeaderTimeout = config.Duration(13 * time.Second)
+	cfg.Proxy.ExpectContinueTimeout = config.Duration(14 * time.Second)
+	cfg.Upstreams = []config.UpstreamConfig{{URL: "http://127.0.0.1:8080"}}
+	handler, err := NewProxyServer(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := handler.transports[0]
+	if transport.MaxIdleConns != 17 || transport.MaxIdleConnsPerHost != 4 || transport.MaxConnsPerHost != 9 || transport.IdleConnTimeout != 11*time.Second || transport.TLSHandshakeTimeout != 12*time.Second || transport.ResponseHeaderTimeout != 13*time.Second || transport.ExpectContinueTimeout != 14*time.Second {
+		t.Fatal("HTTP transport settings were not applied")
 	}
 }

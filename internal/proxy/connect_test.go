@@ -31,7 +31,7 @@ func startRawUpstream(t *testing.T, handle func(net.Conn)) string {
 		if err != nil {
 			return
 		}
-		defer connection.Close()
+		defer func() { _ = connection.Close() }()
 		_ = connection.SetDeadline(time.Now().Add(5 * time.Second))
 		handle(connection)
 	}()
@@ -94,7 +94,7 @@ func TestHTTP1ConnectPreservesBufferedBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	_ = client.SetDeadline(time.Now().Add(3 * time.Second))
 	if _, err := io.WriteString(client, "CONNECT example.test:443 HTTP/1.1\r\nHost: example.test:443\r\n\r\nPING"); err != nil {
 		t.Fatal(err)
@@ -128,7 +128,7 @@ func TestConnectRejectsStatusContaining200InHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	_ = client.SetDeadline(time.Now().Add(3 * time.Second))
 	_, _ = io.WriteString(client, "CONNECT example.test:443 HTTP/1.1\r\nHost: example.test:443\r\n\r\n")
 	headers := readStatusHeaders(t, bufio.NewReader(client))
@@ -153,7 +153,7 @@ func TestConnectRetriesAlternateBeforeSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	_ = client.SetDeadline(time.Now().Add(3 * time.Second))
 	_, _ = io.WriteString(client, "CONNECT example.test:443 HTTP/1.1\r\nHost: example.test:443\r\n\r\n")
 	reader := bufio.NewReader(client)
@@ -186,12 +186,36 @@ func TestConnectSetupTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	_ = client.SetDeadline(time.Now().Add(3 * time.Second))
 	_, _ = io.WriteString(client, "CONNECT example.test:443 HTTP/1.1\r\nHost: example.test:443\r\n\r\n")
 	status := readStatusHeaders(t, bufio.NewReader(client))
 	if !strings.HasPrefix(status, "HTTP/1.1 504 ") {
 		t.Fatalf("status = %q", strings.Split(status, "\r\n")[0])
+	}
+}
+
+func TestConnectResponseHeaderTimeout(t *testing.T) {
+	upstreamURL := startRawUpstream(t, func(conn net.Conn) {
+		_ = readRequestHeaders(t, bufio.NewReader(conn))
+		time.Sleep(300 * time.Millisecond)
+	})
+	cfg := config.Default()
+	cfg.Proxy.Timeout = 5
+	cfg.Proxy.ResponseHeaderTimeout = config.Duration(80 * time.Millisecond)
+	cfg.Upstreams = []config.UpstreamConfig{{URL: upstreamURL}}
+	proxyServer := newTestProxy(t, &cfg)
+	client, err := net.DialTimeout("tcp", strings.TrimPrefix(proxyServer.URL, "http://"), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = client.Close() }()
+	_ = client.SetDeadline(time.Now().Add(2 * time.Second))
+	_, _ = io.WriteString(client, "CONNECT example.test:443 HTTP/1.1\r\nHost: example.test:443\r\n\r\n")
+	start := time.Now()
+	status := readStatusHeaders(t, bufio.NewReader(client))
+	if !strings.HasPrefix(status, "HTTP/1.1 504 ") || time.Since(start) > time.Second {
+		t.Fatalf("status = %q after %s", strings.Split(status, "\r\n")[0], time.Since(start))
 	}
 }
 
@@ -209,7 +233,7 @@ func TestConnectTunnelIdleTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	_ = client.SetDeadline(time.Now().Add(time.Second))
 	_, _ = io.WriteString(client, "CONNECT example.test:443 HTTP/1.1\r\nHost: example.test:443\r\n\r\n")
 	reader := bufio.NewReader(client)
@@ -233,7 +257,7 @@ func TestHTTPSUpstreamConnect(t *testing.T) {
 			t.Errorf("hijack: %v", err)
 			return
 		}
-		defer connection.Close()
+		defer func() { _ = connection.Close() }()
 		_, _ = io.WriteString(connection, "HTTP/1.1 200 Connection Established\r\n\r\nDATA")
 	}))
 	defer upstream.Close()
@@ -249,7 +273,7 @@ func TestHTTPSUpstreamConnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 	_ = client.SetDeadline(time.Now().Add(3 * time.Second))
 	_, _ = io.WriteString(client, "CONNECT example.test:443 HTTP/1.1\r\nHost: example.test:443\r\n\r\n")
 	reader := bufio.NewReader(client)
@@ -316,7 +340,7 @@ func TestHTTP2Connect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.ProtoMajor != 2 || response.StatusCode != http.StatusOK {
 		t.Fatalf("response = %s %d", response.Proto, response.StatusCode)
 	}

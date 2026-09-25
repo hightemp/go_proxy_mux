@@ -18,13 +18,13 @@ import (
 
 // ProxyServer authenticates clients and forwards requests to upstream proxies.
 type ProxyServer struct {
-	config      *config.Config
-	balancer    *balancer.Balancer
-	clients     []*http.Client
-	transports  []*http.Transport
-	upstreamTLS []*tls.Config
-	tunnels     *tunnelRegistry
-	tunnelSlots chan struct{}
+	config        *config.Config
+	balancer      *balancer.Balancer
+	clients       []*http.Client
+	transports    []*http.Transport
+	upstreamTLS   []*tls.Config
+	tunnels       *tunnelRegistry
+	tunnelLimiter *concurrentLimiter
 }
 
 // NewProxyServer creates a handler and dedicated transport for each upstream.
@@ -33,12 +33,17 @@ func NewProxyServer(cfg *config.Config) (*ProxyServer, error) {
 		return nil, err
 	}
 	ps := &ProxyServer{
-		config:      cfg,
-		balancer:    balancer.New(cfg.Proxy, cfg.Upstreams),
-		tunnels:     newTunnelRegistry(),
-		tunnelSlots: make(chan struct{}, cfg.Proxy.MaxTunnels),
+		config:        cfg,
+		balancer:      balancer.New(cfg.Proxy, cfg.Upstreams),
+		tunnels:       newTunnelRegistry(),
+		tunnelLimiter: newConcurrentLimiter(cfg.Proxy.MaxTunnels, cfg.Proxy.MaxTunnelsPerIP),
 	}
 	timeout := time.Duration(cfg.Proxy.Timeout) * time.Second
+	network := cfg.Proxy.Network
+	if network == "auto" {
+		network = "tcp"
+	}
+	dialer := &net.Dialer{Timeout: time.Duration(cfg.Proxy.DialTimeout), KeepAlive: time.Duration(cfg.Proxy.DialKeepAlive)}
 	for i, upstream := range cfg.Upstreams {
 		proxyURL, err := config.UpstreamURL(upstream)
 		if err != nil {
@@ -63,13 +68,17 @@ func NewProxyServer(cfg *config.Config) (*ProxyServer, error) {
 			tlsConfig = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}
 		}
 		transport := &http.Transport{
-			DialContext:           (&net.Dialer{Timeout: timeout, KeepAlive: 30 * time.Second}).DialContext,
+			DialContext: func(ctx context.Context, _ string, address string) (net.Conn, error) {
+				return dialer.DialContext(ctx, network, address)
+			},
 			TLSClientConfig:       tlsConfig,
-			TLSHandshakeTimeout:   timeout,
-			ResponseHeaderTimeout: timeout,
-			MaxIdleConns:          100,
-			MaxIdleConnsPerHost:   10,
-			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   time.Duration(cfg.Proxy.TLSHandshakeTimeout),
+			ResponseHeaderTimeout: time.Duration(cfg.Proxy.ResponseHeaderTimeout),
+			MaxIdleConns:          cfg.Proxy.MaxIdleConns,
+			MaxIdleConnsPerHost:   cfg.Proxy.MaxIdleConnsPerHost,
+			MaxConnsPerHost:       cfg.Proxy.MaxConnsPerHost,
+			IdleConnTimeout:       time.Duration(cfg.Proxy.IdleConnTimeout),
+			ExpectContinueTimeout: time.Duration(cfg.Proxy.ExpectContinueTimeout),
 		}
 		if proxyURL.Scheme == "socks4" || proxyURL.Scheme == "socks5" {
 			scheme, address := proxyURL.Scheme, proxyURL.Host
@@ -82,7 +91,11 @@ func NewProxyServer(cfg *config.Config) (*ProxyServer, error) {
 				if network != "tcp" && network != "tcp4" && network != "tcp6" {
 					return nil, fmt.Errorf("SOCKS upstream supports TCP only")
 				}
-				return socks.DialContext(ctx, scheme, address, target, credentials, timeout)
+				return socks.DialContext(ctx, scheme, address, target, credentials, socks.DialOptions{
+					Network:   network,
+					Timeout:   time.Duration(cfg.Proxy.DialTimeout),
+					KeepAlive: time.Duration(cfg.Proxy.DialKeepAlive),
+				})
 			}
 		} else {
 			transport.Proxy = http.ProxyURL(proxyURL)

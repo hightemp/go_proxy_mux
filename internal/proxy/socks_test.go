@@ -36,7 +36,7 @@ func fakeSOCKS(t *testing.T, version byte, handle func(net.Conn, *bufio.Reader, 
 			done <- err
 			return
 		}
-		defer connection.Close()
+		defer func() { _ = connection.Close() }()
 		_ = connection.SetDeadline(time.Now().Add(3 * time.Second))
 		reader := bufio.NewReader(connection)
 		var request socksRequest
@@ -249,7 +249,7 @@ func TestSOCKSUpstreamsHTTPAndConnect(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer connection.Close()
+				defer func() { _ = connection.Close() }()
 				_ = connection.SetDeadline(time.Now().Add(2 * time.Second))
 				if _, err := io.WriteString(connection, "CONNECT example.test:443 HTTP/1.1\r\nHost: example.test:443\r\n\r\nPING"); err != nil {
 					t.Fatal(err)

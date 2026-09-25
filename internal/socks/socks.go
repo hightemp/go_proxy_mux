@@ -20,17 +20,27 @@ type Credentials struct {
 	Password string
 }
 
+// DialOptions controls the TCP network, setup timeout, and keep-alive interval.
+type DialOptions struct {
+	Network   string
+	Timeout   time.Duration
+	KeepAlive time.Duration
+}
+
 // ErrUnsupportedDestination means this SOCKS version cannot represent the target.
 var ErrUnsupportedDestination = errors.New("unsupported SOCKS destination")
 
 // DialContext connects to target through a SOCKS4 or SOCKS5 TCP proxy.
 // Domain names are sent to the SOCKS server for resolution.
-func DialContext(ctx context.Context, scheme, proxyAddress, targetAddress string, credentials Credentials, timeout time.Duration) (net.Conn, error) {
+func DialContext(ctx context.Context, scheme, proxyAddress, targetAddress string, credentials Credentials, options DialOptions) (net.Conn, error) {
 	if scheme != "socks4" && scheme != "socks5" {
 		return nil, fmt.Errorf("unsupported SOCKS scheme")
 	}
-	if timeout <= 0 {
+	if options.Timeout <= 0 {
 		return nil, fmt.Errorf("SOCKS timeout must be positive")
+	}
+	if options.Network != "tcp" && options.Network != "tcp4" && options.Network != "tcp6" {
+		return nil, fmt.Errorf("SOCKS network must be tcp, tcp4, or tcp6")
 	}
 	host, portText, err := net.SplitHostPort(targetAddress)
 	if err != nil || host == "" {
@@ -49,7 +59,7 @@ func DialContext(ctx context.Context, scheme, proxyAddress, targetAddress string
 	if scheme == "socks4" && credentials.Enabled && credentials.Password != "" {
 		return nil, fmt.Errorf("SOCKS4 USERID does not support a password")
 	}
-	connection, err := (&net.Dialer{Timeout: timeout}).DialContext(ctx, "tcp", proxyAddress)
+	connection, err := (&net.Dialer{Timeout: options.Timeout, KeepAlive: options.KeepAlive}).DialContext(ctx, options.Network, proxyAddress)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +71,7 @@ func DialContext(ctx context.Context, scheme, proxyAddress, targetAddress string
 	}()
 	stopCancel := context.AfterFunc(ctx, func() { _ = connection.Close() })
 	defer stopCancel()
-	deadline := time.Now().Add(timeout)
+	deadline := time.Now().Add(options.Timeout)
 	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
 		deadline = contextDeadline
 	}

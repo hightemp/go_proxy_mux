@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/hightemp/go_proxy_mux/internal/config"
@@ -25,14 +24,8 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", address, err)
 	}
-	listener = newLimitedListener(listener, cfg.Server.MaxConnections)
-	server := &http.Server{
-		Handler:           handler,
-		ReadHeaderTimeout: time.Duration(cfg.Server.ReadHeaderTimeout),
-		IdleTimeout:       time.Duration(cfg.Server.IdleTimeout),
-		MaxHeaderBytes:    64 << 10,
-		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: []string{"h2", "http/1.1"}},
-	}
+	listener = newLimitedListener(listener, cfg.Server.MaxConnections, cfg.Server.MaxConnectionsPerIP)
+	server := newHTTPServer(cfg, handler)
 	result := make(chan error, 1)
 	go func() {
 		if cfg.Server.TLS.CertFile != "" {
@@ -68,38 +61,25 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	return errors.Join(shutdownErr, tunnelErr, serveErr)
 }
 
-type limitedListener struct {
-	net.Listener
-	slots chan struct{}
-}
-
-func newLimitedListener(listener net.Listener, limit int) *limitedListener {
-	return &limitedListener{Listener: listener, slots: make(chan struct{}, limit)}
-}
-
-func (l *limitedListener) Accept() (net.Conn, error) {
-	for {
-		connection, err := l.Listener.Accept()
-		if err != nil {
-			return nil, err
-		}
-		select {
-		case l.slots <- struct{}{}:
-			return &limitedConnection{Conn: connection, release: func() { <-l.slots }}, nil
-		default:
-			_ = connection.Close()
-		}
+func newHTTPServer(cfg *config.Config, handler http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: time.Duration(cfg.Server.ReadHeaderTimeout),
+		IdleTimeout:       time.Duration(cfg.Server.IdleTimeout),
+		MaxHeaderBytes:    cfg.Server.MaxHeaderBytes,
+		HTTP2: &http.HTTP2Config{
+			MaxConcurrentStreams: effectiveHTTP2MaxConcurrentStreams(cfg),
+			SendPingTimeout:      time.Duration(cfg.Server.HTTP2SendPingTimeout),
+			PingTimeout:          time.Duration(cfg.Server.HTTP2PingTimeout),
+			WriteByteTimeout:     time.Duration(cfg.Server.HTTP2WriteByteTimeout),
+		},
+		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: []string{"h2", "http/1.1"}},
 	}
 }
 
-type limitedConnection struct {
-	net.Conn
-	once    sync.Once
-	release func()
-}
-
-func (c *limitedConnection) Close() error {
-	err := c.Conn.Close()
-	c.once.Do(c.release)
-	return err
+func effectiveHTTP2MaxConcurrentStreams(cfg *config.Config) int {
+	if cfg.Server.HTTP2MaxConcurrentStreams > 0 {
+		return cfg.Server.HTTP2MaxConcurrentStreams
+	}
+	return min(cfg.Proxy.MaxTunnels, cfg.Proxy.MaxTunnelsPerIP)
 }

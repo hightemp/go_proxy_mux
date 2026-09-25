@@ -47,13 +47,12 @@ func (ps *ProxyServer) handleConnect(w http.ResponseWriter, r *http.Request, sel
 			return
 		}
 	}
-	select {
-	case ps.tunnelSlots <- struct{}{}:
-		defer func() { <-ps.tunnelSlots }()
-	default:
+	releaseTunnel, ok := ps.tunnelLimiter.tryAcquire(addressHost(r.RemoteAddr))
+	if !ok {
 		http.Error(w, "Tunnel limit exceeded", http.StatusTooManyRequests)
 		return
 	}
+	defer releaseTunnel()
 	for attempt := 0; attempt < 2; attempt++ {
 		connection, reader, setupErr := ps.dialConnect(r.Context(), selected.Index, target)
 		if setupErr == nil {
@@ -90,6 +89,10 @@ func (ps *ProxyServer) dialConnect(ctx context.Context, index int, target string
 		return nil, nil, err
 	}
 	timeout := time.Duration(ps.config.Proxy.Timeout) * time.Second
+	network := ps.config.Proxy.Network
+	if network == "auto" {
+		network = "tcp"
+	}
 	setupCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	if proxyURL.Scheme == "socks4" || proxyURL.Scheme == "socks5" {
@@ -98,13 +101,20 @@ func (ps *ProxyServer) dialConnect(ctx context.Context, index int, target string
 			Username: upstream.Auth.Username,
 			Password: upstream.Auth.Password,
 		}
-		connection, err := socks.DialContext(setupCtx, proxyURL.Scheme, proxyURL.Host, target, credentials, timeout)
+		connection, err := socks.DialContext(setupCtx, proxyURL.Scheme, proxyURL.Host, target, credentials, socks.DialOptions{
+			Network:   network,
+			Timeout:   time.Duration(ps.config.Proxy.DialTimeout),
+			KeepAlive: time.Duration(ps.config.Proxy.DialKeepAlive),
+		})
 		if err != nil {
 			return nil, nil, setupError(setupCtx, err)
 		}
 		return connection, bufio.NewReader(connection), nil
 	}
-	raw, err := (&net.Dialer{Timeout: timeout}).DialContext(setupCtx, "tcp", proxyURL.Host)
+	raw, err := (&net.Dialer{
+		Timeout:   time.Duration(ps.config.Proxy.DialTimeout),
+		KeepAlive: time.Duration(ps.config.Proxy.DialKeepAlive),
+	}).DialContext(setupCtx, network, proxyURL.Host)
 	if err != nil {
 		return nil, nil, setupError(setupCtx, err)
 	}
@@ -126,7 +136,10 @@ func (ps *ProxyServer) dialConnect(ctx context.Context, index int, target string
 			tlsConfig.RootCAs = ps.upstreamTLS[index].RootCAs
 		}
 		secured := tls.Client(connection, tlsConfig)
-		if err := secured.HandshakeContext(setupCtx); err != nil {
+		handshakeCtx, handshakeCancel := context.WithTimeout(setupCtx, time.Duration(ps.config.Proxy.TLSHandshakeTimeout))
+		err := secured.HandshakeContext(handshakeCtx)
+		handshakeCancel()
+		if err != nil {
 			return nil, nil, setupError(setupCtx, err)
 		}
 		connection = secured
@@ -138,6 +151,13 @@ func (ps *ProxyServer) dialConnect(ctx context.Context, index int, target string
 	}
 	if _, err := io.WriteString(connection, request+"\r\n"); err != nil {
 		return nil, nil, setupError(setupCtx, err)
+	}
+	headerDeadline := time.Now().Add(time.Duration(ps.config.Proxy.ResponseHeaderTimeout))
+	if setupDeadline, ok := setupCtx.Deadline(); ok && setupDeadline.Before(headerDeadline) {
+		headerDeadline = setupDeadline
+	}
+	if err := connection.SetReadDeadline(headerDeadline); err != nil {
+		return nil, nil, err
 	}
 	reader := bufio.NewReader(connection)
 	status, err := readConnectStatus(reader)

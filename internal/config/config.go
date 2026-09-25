@@ -42,6 +42,12 @@ type ServerConfig struct {
 	AllowInsecurePublicHTTP         bool      `yaml:"allow_insecure_public_http"`
 	AllowUnauthenticatedPublicProxy bool      `yaml:"allow_unauthenticated_public_proxy"`
 	MaxConnections                  int       `yaml:"max_connections"`
+	MaxConnectionsPerIP             int       `yaml:"max_connections_per_ip"`
+	MaxHeaderBytes                  int       `yaml:"max_header_bytes"`
+	HTTP2MaxConcurrentStreams       int       `yaml:"http2_max_concurrent_streams"`
+	HTTP2SendPingTimeout            Duration  `yaml:"http2_send_ping_timeout"`
+	HTTP2PingTimeout                Duration  `yaml:"http2_ping_timeout"`
+	HTTP2WriteByteTimeout           Duration  `yaml:"http2_write_byte_timeout"`
 	ReadHeaderTimeout               Duration  `yaml:"read_header_timeout"`
 	IdleTimeout                     Duration  `yaml:"idle_timeout"`
 	ShutdownTimeout                 Duration  `yaml:"shutdown_timeout"`
@@ -62,11 +68,22 @@ type AuthConfig struct {
 
 // ProxyConfig controls upstream selection, timeouts, and tunnel limits.
 type ProxyConfig struct {
-	Algorithm         string   `yaml:"algorithm"`
-	Timeout           int      `yaml:"timeout"` // Legacy value in seconds.
-	MaxTunnels        int      `yaml:"max_tunnels"`
-	TunnelIdleTimeout Duration `yaml:"tunnel_idle_timeout"`
-	FailoverCooldown  Duration `yaml:"failover_cooldown"`
+	Algorithm             string   `yaml:"algorithm"`
+	Timeout               int      `yaml:"timeout"` // Legacy value in seconds.
+	Network               string   `yaml:"network"`
+	DialTimeout           Duration `yaml:"dial_timeout"`
+	DialKeepAlive         Duration `yaml:"dial_keep_alive"`
+	TLSHandshakeTimeout   Duration `yaml:"tls_handshake_timeout"`
+	ResponseHeaderTimeout Duration `yaml:"response_header_timeout"`
+	IdleConnTimeout       Duration `yaml:"idle_conn_timeout"`
+	ExpectContinueTimeout Duration `yaml:"expect_continue_timeout"`
+	MaxIdleConns          int      `yaml:"max_idle_conns"`
+	MaxIdleConnsPerHost   int      `yaml:"max_idle_conns_per_host"`
+	MaxConnsPerHost       int      `yaml:"max_conns_per_host"`
+	MaxTunnels            int      `yaml:"max_tunnels"`
+	MaxTunnelsPerIP       int      `yaml:"max_tunnels_per_ip"`
+	TunnelIdleTimeout     Duration `yaml:"tunnel_idle_timeout"`
+	FailoverCooldown      Duration `yaml:"failover_cooldown"`
 }
 
 // UpstreamConfig describes one proxy server.
@@ -87,19 +104,34 @@ type UpstreamAuth struct {
 func Default() Config {
 	return Config{
 		Server: ServerConfig{
-			Host:              "127.0.0.1",
-			Port:              8380,
-			MaxConnections:    1024,
-			ReadHeaderTimeout: Duration(15 * time.Second),
-			IdleTimeout:       Duration(2 * time.Minute),
-			ShutdownTimeout:   Duration(15 * time.Second),
+			Host:                  "127.0.0.1",
+			Port:                  8380,
+			MaxConnections:        1024,
+			MaxConnectionsPerIP:   128,
+			MaxHeaderBytes:        64 << 10,
+			HTTP2SendPingTimeout:  Duration(time.Minute),
+			HTTP2PingTimeout:      Duration(15 * time.Second),
+			HTTP2WriteByteTimeout: Duration(30 * time.Second),
+			ReadHeaderTimeout:     Duration(15 * time.Second),
+			IdleTimeout:           Duration(2 * time.Minute),
+			ShutdownTimeout:       Duration(15 * time.Second),
 		},
 		Proxy: ProxyConfig{
-			Algorithm:         "roundrobin",
-			Timeout:           30,
-			MaxTunnels:        256,
-			TunnelIdleTimeout: Duration(2 * time.Minute),
-			FailoverCooldown:  Duration(30 * time.Second),
+			Algorithm:             "roundrobin",
+			Timeout:               30,
+			Network:               "auto",
+			DialTimeout:           Duration(10 * time.Second),
+			DialKeepAlive:         Duration(30 * time.Second),
+			TLSHandshakeTimeout:   Duration(10 * time.Second),
+			ResponseHeaderTimeout: Duration(30 * time.Second),
+			IdleConnTimeout:       Duration(90 * time.Second),
+			ExpectContinueTimeout: Duration(time.Second),
+			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   10,
+			MaxTunnels:            256,
+			MaxTunnelsPerIP:       128,
+			TunnelIdleTimeout:     Duration(2 * time.Minute),
+			FailoverCooldown:      Duration(30 * time.Second),
 		},
 	}
 }

@@ -29,6 +29,12 @@ func TestLoadConfigFromEnvOnly(t *testing.T) {
 		"MUX_SERVER_ALLOW_INSECURE_PUBLIC_HTTP=false",
 		"MUX_SERVER_ALLOW_UNAUTHENTICATED_PUBLIC_PROXY=false",
 		"MUX_SERVER_MAX_CONNECTIONS=12",
+		"MUX_SERVER_MAX_CONNECTIONS_PER_IP=6",
+		"MUX_SERVER_MAX_HEADER_BYTES=8192",
+		"MUX_SERVER_HTTP2_MAX_CONCURRENT_STREAMS=2",
+		"MUX_SERVER_HTTP2_SEND_PING_TIMEOUT=100ms",
+		"MUX_SERVER_HTTP2_PING_TIMEOUT=200ms",
+		"MUX_SERVER_HTTP2_WRITE_BYTE_TIMEOUT=300ms",
 		"MUX_SERVER_READ_HEADER_TIMEOUT=3s",
 		"MUX_SERVER_IDLE_TIMEOUT=4m",
 		"MUX_SERVER_SHUTDOWN_TIMEOUT=5s",
@@ -37,7 +43,18 @@ func TestLoadConfigFromEnvOnly(t *testing.T) {
 		"MUX_AUTH_PASSWORD=literal$#secret with spaces",
 		"MUX_PROXY_ALGORITHM=random",
 		"MUX_PROXY_TIMEOUT=9",
+		"MUX_PROXY_NETWORK=tcp4",
+		"MUX_PROXY_DIAL_TIMEOUT=2s",
+		"MUX_PROXY_DIAL_KEEP_ALIVE=3s",
+		"MUX_PROXY_TLS_HANDSHAKE_TIMEOUT=4s",
+		"MUX_PROXY_RESPONSE_HEADER_TIMEOUT=5s",
+		"MUX_PROXY_IDLE_CONN_TIMEOUT=6s",
+		"MUX_PROXY_EXPECT_CONTINUE_TIMEOUT=0s",
+		"MUX_PROXY_MAX_IDLE_CONNS=11",
+		"MUX_PROXY_MAX_IDLE_CONNS_PER_HOST=3",
+		"MUX_PROXY_MAX_CONNS_PER_HOST=4",
 		"MUX_PROXY_MAX_TUNNELS=7",
+		"MUX_PROXY_MAX_TUNNELS_PER_IP=4",
 		"MUX_PROXY_TUNNEL_IDLE_TIMEOUT=8m",
 		"MUX_PROXY_FAILOVER_COOLDOWN=6s",
 		"MUX_UPSTREAM_COUNT=2",
@@ -56,13 +73,13 @@ func TestLoadConfigFromEnvOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Server.Host != "127.0.0.1" || cfg.Server.Port != 9393 || cfg.Server.MaxConnections != 12 || time.Duration(cfg.Server.ReadHeaderTimeout) != 3*time.Second || time.Duration(cfg.Server.IdleTimeout) != 4*time.Minute || time.Duration(cfg.Server.ShutdownTimeout) != 5*time.Second {
+	if cfg.Server.Host != "127.0.0.1" || cfg.Server.Port != 9393 || cfg.Server.MaxConnections != 12 || cfg.Server.MaxConnectionsPerIP != 6 || cfg.Server.MaxHeaderBytes != 8192 || cfg.Server.HTTP2MaxConcurrentStreams != 2 || time.Duration(cfg.Server.HTTP2SendPingTimeout) != 100*time.Millisecond || time.Duration(cfg.Server.HTTP2PingTimeout) != 200*time.Millisecond || time.Duration(cfg.Server.HTTP2WriteByteTimeout) != 300*time.Millisecond || time.Duration(cfg.Server.ReadHeaderTimeout) != 3*time.Second || time.Duration(cfg.Server.IdleTimeout) != 4*time.Minute || time.Duration(cfg.Server.ShutdownTimeout) != 5*time.Second {
 		t.Fatalf("server overrides not applied: %+v", cfg.Server)
 	}
 	if !cfg.Auth.Enabled || cfg.Auth.Username != "client" || cfg.Auth.Password != "literal$#secret with spaces" {
 		t.Fatal("client authentication overrides not applied")
 	}
-	if cfg.Proxy.Algorithm != "random" || cfg.Proxy.Timeout != 9 || cfg.Proxy.MaxTunnels != 7 || time.Duration(cfg.Proxy.TunnelIdleTimeout) != 8*time.Minute || time.Duration(cfg.Proxy.FailoverCooldown) != 6*time.Second {
+	if cfg.Proxy.Algorithm != "random" || cfg.Proxy.Timeout != 9 || cfg.Proxy.Network != "tcp4" || time.Duration(cfg.Proxy.DialTimeout) != 2*time.Second || time.Duration(cfg.Proxy.DialKeepAlive) != 3*time.Second || time.Duration(cfg.Proxy.TLSHandshakeTimeout) != 4*time.Second || time.Duration(cfg.Proxy.ResponseHeaderTimeout) != 5*time.Second || time.Duration(cfg.Proxy.IdleConnTimeout) != 6*time.Second || time.Duration(cfg.Proxy.ExpectContinueTimeout) != 0 || cfg.Proxy.MaxIdleConns != 11 || cfg.Proxy.MaxIdleConnsPerHost != 3 || cfg.Proxy.MaxConnsPerHost != 4 || cfg.Proxy.MaxTunnels != 7 || cfg.Proxy.MaxTunnelsPerIP != 4 || time.Duration(cfg.Proxy.TunnelIdleTimeout) != 8*time.Minute || time.Duration(cfg.Proxy.FailoverCooldown) != 6*time.Second {
 		t.Fatalf("proxy overrides not applied: %+v", cfg.Proxy)
 	}
 	if len(cfg.Upstreams) != 2 || cfg.Upstreams[0].URL != "http://127.0.0.1:8080" || cfg.Upstreams[1].URL != "socks5://127.0.0.1:1080" || cfg.Upstreams[1].Auth.Username != "socks-user" || cfg.Upstreams[1].Auth.Password != "socks-password" {
@@ -119,6 +136,9 @@ func TestEnvErrors(t *testing.T) {
 		{"bad boolean", "MUX_AUTH_ENABLED=maybe\n", "MUX_AUTH_ENABLED"},
 		{"bad duration", "MUX_SERVER_IDLE_TIMEOUT=tomorrow\n", "MUX_SERVER_IDLE_TIMEOUT"},
 		{"bad count", "MUX_UPSTREAM_COUNT=1000000\n", "MUX_UPSTREAM_COUNT"},
+		{"bad network", "MUX_PROXY_NETWORK=udp\n", "proxy.network"},
+		{"bad per-IP connection limit", "MUX_SERVER_MAX_CONNECTIONS=4\n", "server.max_connections_per_ip"},
+		{"bad stream limit", "MUX_SERVER_HTTP2_MAX_CONCURRENT_STREAMS=1000\n", "server.http2_max_concurrent_streams"},
 		{"missing URL", "MUX_UPSTREAM_COUNT=1\n", "MUX_UPSTREAM_1_URL"},
 		{"upstream without count", "MUX_UPSTREAM_1_URL=http://127.0.0.1:8080\n", "MUX_UPSTREAM_COUNT"},
 		{"unknown field", "MUX_SERVER_PRTO=https\n", "MUX_SERVER_PRTO"},
