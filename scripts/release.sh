@@ -40,12 +40,12 @@ if git show-ref --verify --quiet "refs/tags/$tag"; then
 fi
 
 git add -A
-if git diff --cached --quiet; then
-  echo "No changes to commit for $tag" >&2
-  exit 1
+if ! git diff --cached --quiet; then
+  git diff --cached --check
+  git commit -m "release $tag"
+else
+  echo "No changes to commit; tagging current HEAD as $tag"
 fi
-git diff --cached --check
-git commit -m "release $tag"
 git tag -a "$tag" -m "Release $tag"
 git push --atomic origin HEAD:main "refs/tags/$tag"
 echo "Released $tag"

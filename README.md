@@ -233,6 +233,6 @@ CI validates both Compose variants and builds the Docker image. Integration test
 2. Configure the repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` for `hightemp/go_proxy_mux`.
 3. From an up-to-date `main` branch, run `make release`.
 
-The Make target runs CI and builds locally, commits project changes, creates an annotated `v<version>` tag, then pushes the branch and tag atomically. It refuses to overwrite an existing tag. A failed push can be retried with the same command if the local commit and tag are intact.
+The Make target runs CI and builds locally, commits project changes when present, creates an annotated `v<version>` tag on the resulting commit, then pushes the branch and tag atomically. A clean checkout tags the current commit. It refuses to overwrite an existing tag. A failed push can be retried with the same command if the local commit and tag are intact.
 
 The tag triggers [GitHub Actions release](.github/workflows/release.yml) after [CI](.github/workflows/test.yml) passes. The workflow publishes six binaries, examples, and `SHA256SUMS` to GitHub Releases; it also publishes `linux/amd64` and `linux/arm64` images to Docker Hub. Stable releases update `latest`. The workflow checks the published image platforms and release asset checksums.
