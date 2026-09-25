@@ -120,8 +120,9 @@ jobs:
             CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
               go build -trimpath -ldflags='-s -w' -o "$output" ./cmd/go_proxy_mux
           done
-          cp config.example.yaml .env.example docker-compose.yml docker-compose.config.yml dist/
-          (cd dist && sha256sum go_proxy_mux_* config.example.yaml .env.example docker-compose.yml docker-compose.config.yml > SHA256SUMS)
+          cp config.example.yaml docker-compose.yml docker-compose.config.yml dist/
+          cp .env.example dist/env.example
+          (cd dist && sha256sum go_proxy_mux_* config.example.yaml env.example docker-compose.yml docker-compose.config.yml > SHA256SUMS)
           (cd dist && sha256sum -c SHA256SUMS)
 
       - name: Create GitHub release
@@ -133,7 +134,7 @@ jobs:
           files: |
             dist/go_proxy_mux_*
             dist/config.example.yaml
-            dist/.env.example
+            dist/env.example
             dist/docker-compose.yml
             dist/docker-compose.config.yml
             dist/SHA256SUMS

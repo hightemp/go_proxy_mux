@@ -32,7 +32,7 @@ Download a binary and `SHA256SUMS` from [GitHub Releases](https://github.com/hig
 sha256sum --ignore-missing -c SHA256SUMS
 ```
 
-Release assets include binaries for Linux, macOS, and Windows on amd64 and arm64. Configure the proxy before starting it; the assets contain examples but no working credentials or TLS keys.
+Release assets include binaries for Linux, macOS, and Windows on amd64 and arm64. The env template is named `env.example` in the release assets; copy it to `.env` before editing. The assets contain examples but no working credentials or TLS keys.
 
 ### Docker
 
