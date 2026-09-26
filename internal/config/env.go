@@ -146,6 +146,7 @@ func applyEnvOverrides(cfg *Config, values map[string]string) error {
 		{"MUX_PROXY_DIAL_KEEP_ALIVE", &cfg.Proxy.DialKeepAlive},
 		{"MUX_PROXY_TLS_HANDSHAKE_TIMEOUT", &cfg.Proxy.TLSHandshakeTimeout},
 		{"MUX_PROXY_RESPONSE_HEADER_TIMEOUT", &cfg.Proxy.ResponseHeaderTimeout},
+		{"MUX_PROXY_RESPONSE_BODY_IDLE_TIMEOUT", &cfg.Proxy.ResponseBodyIdleTimeout},
 		{"MUX_PROXY_IDLE_CONN_TIMEOUT", &cfg.Proxy.IdleConnTimeout},
 		{"MUX_PROXY_EXPECT_CONTINUE_TIMEOUT", &cfg.Proxy.ExpectContinueTimeout},
 		{"MUX_PROXY_TUNNEL_IDLE_TIMEOUT", &cfg.Proxy.TunnelIdleTimeout},

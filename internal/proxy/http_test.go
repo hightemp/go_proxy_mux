@@ -280,6 +280,132 @@ func TestResponseHeaderTimeout(t *testing.T) {
 	}
 }
 
+func TestHTTPSetupTimeout(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer upstream.Close()
+	cfg := config.Default()
+	cfg.Proxy.Timeout = 1
+	cfg.Proxy.ResponseHeaderTimeout = config.Duration(3 * time.Second)
+	cfg.Upstreams = []config.UpstreamConfig{{URL: upstream.URL}}
+	proxyServer := newTestProxy(t, &cfg)
+	start := time.Now()
+	response, err := clientThroughProxy(t, proxyServer.URL, "", "").Get("http://example.test/slow-headers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusGatewayTimeout || time.Since(start) > 2*time.Second {
+		t.Fatalf("status = %d after %s, want 504 near 1s", response.StatusCode, time.Since(start))
+	}
+}
+
+func TestLongHTTPResponseOutlivesSetupTimeout(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for range 6 {
+			if _, err := io.WriteString(w, "chunk\n"); err != nil {
+				return
+			}
+			w.(http.Flusher).Flush()
+			time.Sleep(250 * time.Millisecond)
+		}
+	}))
+	defer upstream.Close()
+	cfg := config.Default()
+	cfg.Proxy.Timeout = 1
+	cfg.Upstreams = []config.UpstreamConfig{{URL: upstream.URL}}
+	proxyServer := newTestProxy(t, &cfg)
+	client := clientThroughProxy(t, proxyServer.URL, "", "")
+	client.Timeout = 4 * time.Second
+	response, err := client.Get("http://example.test/stream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusOK || string(data) != strings.Repeat("chunk\n", 6) {
+		t.Fatalf("status = %d, body = %q", response.StatusCode, data)
+	}
+}
+
+func TestStalledHTTPResponseIsAborted(t *testing.T) {
+	upstreamStopped := make(chan struct{})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer close(upstreamStopped)
+		if _, err := io.WriteString(w, "start"); err != nil {
+			return
+		}
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer upstream.Close()
+	cfg := config.Default()
+	cfg.Proxy.Timeout = 5
+	cfg.Proxy.ResponseBodyIdleTimeout = config.Duration(150 * time.Millisecond)
+	cfg.Upstreams = []config.UpstreamConfig{{URL: upstream.URL}}
+	proxyServer := newTestProxy(t, &cfg)
+	client := clientThroughProxy(t, proxyServer.URL, "", "")
+	client.Timeout = 2 * time.Second
+	response, err := client.Get("http://example.test/stalled-body")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	start := time.Now()
+	_, err = io.ReadAll(response.Body)
+	if err == nil || time.Since(start) > time.Second {
+		t.Fatalf("body read error = %v after %s, want prompt abort", err, time.Since(start))
+	}
+	select {
+	case <-upstreamStopped:
+	case <-time.After(time.Second):
+		t.Fatal("stalled upstream request was not canceled")
+	}
+}
+
+func TestCancelledClientStopsStreamingUpstream(t *testing.T) {
+	upstreamStopped := make(chan struct{})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer close(upstreamStopped)
+		if _, err := io.WriteString(w, "chunk"); err != nil {
+			return
+		}
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer upstream.Close()
+	cfg := config.Default()
+	cfg.Proxy.Timeout = 1
+	cfg.Upstreams = []config.UpstreamConfig{{URL: upstream.URL}}
+	proxyServer := newTestProxy(t, &cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://example.test/stream", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := clientThroughProxy(t, proxyServer.URL, "", "")
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	first := make([]byte, len("chunk"))
+	if _, err := io.ReadFull(response.Body, first); err != nil || string(first) != "chunk" {
+		t.Fatalf("first chunk = %q, error = %v", first, err)
+	}
+	cancel()
+	select {
+	case <-upstreamStopped:
+	case <-time.After(time.Second):
+		t.Fatal("streaming upstream request continued after client cancellation")
+	}
+}
+
 func TestUpstreamTLSHandshakeTimeout(t *testing.T) {
 	address := startRawUpstream(t, func(conn net.Conn) {
 		time.Sleep(300 * time.Millisecond)

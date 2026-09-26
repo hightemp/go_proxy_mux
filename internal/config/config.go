@@ -68,22 +68,23 @@ type AuthConfig struct {
 
 // ProxyConfig controls upstream selection, timeouts, and tunnel limits.
 type ProxyConfig struct {
-	Algorithm             string   `yaml:"algorithm"`
-	Timeout               int      `yaml:"timeout"` // Legacy value in seconds.
-	Network               string   `yaml:"network"`
-	DialTimeout           Duration `yaml:"dial_timeout"`
-	DialKeepAlive         Duration `yaml:"dial_keep_alive"`
-	TLSHandshakeTimeout   Duration `yaml:"tls_handshake_timeout"`
-	ResponseHeaderTimeout Duration `yaml:"response_header_timeout"`
-	IdleConnTimeout       Duration `yaml:"idle_conn_timeout"`
-	ExpectContinueTimeout Duration `yaml:"expect_continue_timeout"`
-	MaxIdleConns          int      `yaml:"max_idle_conns"`
-	MaxIdleConnsPerHost   int      `yaml:"max_idle_conns_per_host"`
-	MaxConnsPerHost       int      `yaml:"max_conns_per_host"`
-	MaxTunnels            int      `yaml:"max_tunnels"`
-	MaxTunnelsPerIP       int      `yaml:"max_tunnels_per_ip"`
-	TunnelIdleTimeout     Duration `yaml:"tunnel_idle_timeout"`
-	FailoverCooldown      Duration `yaml:"failover_cooldown"`
+	Algorithm               string   `yaml:"algorithm"`
+	Timeout                 int      `yaml:"timeout"` // Legacy value in seconds.
+	Network                 string   `yaml:"network"`
+	DialTimeout             Duration `yaml:"dial_timeout"`
+	DialKeepAlive           Duration `yaml:"dial_keep_alive"`
+	TLSHandshakeTimeout     Duration `yaml:"tls_handshake_timeout"`
+	ResponseHeaderTimeout   Duration `yaml:"response_header_timeout"`
+	ResponseBodyIdleTimeout Duration `yaml:"response_body_idle_timeout"`
+	IdleConnTimeout         Duration `yaml:"idle_conn_timeout"`
+	ExpectContinueTimeout   Duration `yaml:"expect_continue_timeout"`
+	MaxIdleConns            int      `yaml:"max_idle_conns"`
+	MaxIdleConnsPerHost     int      `yaml:"max_idle_conns_per_host"`
+	MaxConnsPerHost         int      `yaml:"max_conns_per_host"`
+	MaxTunnels              int      `yaml:"max_tunnels"`
+	MaxTunnelsPerIP         int      `yaml:"max_tunnels_per_ip"`
+	TunnelIdleTimeout       Duration `yaml:"tunnel_idle_timeout"`
+	FailoverCooldown        Duration `yaml:"failover_cooldown"`
 }
 
 // UpstreamConfig describes one proxy server.
@@ -117,21 +118,22 @@ func Default() Config {
 			ShutdownTimeout:       Duration(15 * time.Second),
 		},
 		Proxy: ProxyConfig{
-			Algorithm:             "roundrobin",
-			Timeout:               30,
-			Network:               "auto",
-			DialTimeout:           Duration(10 * time.Second),
-			DialKeepAlive:         Duration(30 * time.Second),
-			TLSHandshakeTimeout:   Duration(10 * time.Second),
-			ResponseHeaderTimeout: Duration(30 * time.Second),
-			IdleConnTimeout:       Duration(90 * time.Second),
-			ExpectContinueTimeout: Duration(time.Second),
-			MaxIdleConns:          100,
-			MaxIdleConnsPerHost:   10,
-			MaxTunnels:            256,
-			MaxTunnelsPerIP:       128,
-			TunnelIdleTimeout:     Duration(2 * time.Minute),
-			FailoverCooldown:      Duration(30 * time.Second),
+			Algorithm:               "roundrobin",
+			Timeout:                 30,
+			Network:                 "auto",
+			DialTimeout:             Duration(10 * time.Second),
+			DialKeepAlive:           Duration(30 * time.Second),
+			TLSHandshakeTimeout:     Duration(10 * time.Second),
+			ResponseHeaderTimeout:   Duration(30 * time.Second),
+			ResponseBodyIdleTimeout: Duration(2 * time.Minute),
+			IdleConnTimeout:         Duration(90 * time.Second),
+			ExpectContinueTimeout:   Duration(time.Second),
+			MaxIdleConns:            100,
+			MaxIdleConnsPerHost:     10,
+			MaxTunnels:              256,
+			MaxTunnelsPerIP:         128,
+			TunnelIdleTimeout:       Duration(2 * time.Minute),
+			FailoverCooldown:        Duration(30 * time.Second),
 		},
 	}
 }

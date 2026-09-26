@@ -38,7 +38,6 @@ func NewProxyServer(cfg *config.Config) (*ProxyServer, error) {
 		tunnels:       newTunnelRegistry(),
 		tunnelLimiter: newConcurrentLimiter(cfg.Proxy.MaxTunnels, cfg.Proxy.MaxTunnelsPerIP),
 	}
-	timeout := time.Duration(cfg.Proxy.Timeout) * time.Second
 	network := cfg.Proxy.Network
 	if network == "auto" {
 		network = "tcp"
@@ -104,7 +103,6 @@ func NewProxyServer(cfg *config.Config) (*ProxyServer, error) {
 		ps.upstreamTLS = append(ps.upstreamTLS, tlsConfig)
 		ps.clients = append(ps.clients, &http.Client{
 			Transport:     transport,
-			Timeout:       timeout,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		})
 	}

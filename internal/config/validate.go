@@ -88,6 +88,9 @@ func Validate(cfg *Config) error {
 	if cfg.Proxy.Network != "auto" && cfg.Proxy.Network != "tcp4" && cfg.Proxy.Network != "tcp6" {
 		return fmt.Errorf("proxy.network must be auto, tcp4, or tcp6")
 	}
+	if cfg.Proxy.ResponseBodyIdleTimeout <= 0 {
+		return fmt.Errorf("proxy.response_body_idle_timeout must be positive")
+	}
 	if cfg.Proxy.DialTimeout <= 0 || cfg.Proxy.DialKeepAlive <= 0 || cfg.Proxy.TLSHandshakeTimeout <= 0 || cfg.Proxy.ResponseHeaderTimeout <= 0 || cfg.Proxy.IdleConnTimeout <= 0 || cfg.Proxy.ExpectContinueTimeout < 0 {
 		return fmt.Errorf("proxy transport timeouts must be positive (expect_continue_timeout may be zero)")
 	}

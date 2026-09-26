@@ -20,6 +20,7 @@ func TestLoadConfig(t *testing.T) {
 		{name: "invalid algorithm", yaml: "proxy:\n  algorithm: mystery\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "proxy.algorithm"},
 		{name: "invalid network", yaml: "proxy:\n  network: udp\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "proxy.network"},
 		{name: "invalid dial timeout", yaml: "proxy:\n  dial_timeout: 0s\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "proxy transport timeouts"},
+		{name: "invalid response body idle timeout", yaml: "proxy:\n  response_body_idle_timeout: 0s\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "proxy.response_body_idle_timeout"},
 		{name: "per-IP connection limit too high", yaml: "server:\n  max_connections_per_ip: 2048\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "server.max_connections_per_ip"},
 		{name: "header limit too small", yaml: "server:\n  max_header_bytes: 32\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "server.max_header_bytes"},
 		{name: "HTTP2 streams exceed tunnels", yaml: "server:\n  http2_max_concurrent_streams: 512\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "server.http2_max_concurrent_streams"},
@@ -47,7 +48,7 @@ func TestLoadConfig(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if cfg.Proxy.MaxTunnels != 256 || time.Duration(cfg.Proxy.FailoverCooldown) != 30*time.Second {
+			if cfg.Proxy.MaxTunnels != 256 || time.Duration(cfg.Proxy.FailoverCooldown) != 30*time.Second || time.Duration(cfg.Proxy.ResponseBodyIdleTimeout) != 2*time.Minute {
 				t.Fatalf("unexpected defaults: %+v", cfg.Proxy)
 			}
 		})

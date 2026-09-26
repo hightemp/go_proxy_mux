@@ -108,10 +108,11 @@ Every application setting is represented in [`.env.example`](.env.example). `MUX
 | `MUX_SERVER_READ_HEADER_TIMEOUT`, `MUX_SERVER_IDLE_TIMEOUT`, `MUX_SERVER_SHUTDOWN_TIMEOUT` | Listener and shutdown timeouts |
 | `MUX_AUTH_ENABLED`, `MUX_AUTH_USERNAME`, `MUX_AUTH_PASSWORD` | Client Basic authentication |
 | `MUX_PROXY_ALGORITHM` | `roundrobin` or `random` |
-| `MUX_PROXY_TIMEOUT` | HTTP request and CONNECT setup timeout, in seconds |
+| `MUX_PROXY_TIMEOUT` | HTTP setup through response headers and CONNECT setup timeout, in seconds |
 | `MUX_PROXY_NETWORK` | Outbound `auto`, `tcp4`, or `tcp6` dialing |
 | `MUX_PROXY_DIAL_TIMEOUT`, `MUX_PROXY_DIAL_KEEP_ALIVE` | TCP dial and keep-alive durations |
 | `MUX_PROXY_TLS_HANDSHAKE_TIMEOUT`, `MUX_PROXY_RESPONSE_HEADER_TIMEOUT` | Outbound TLS and response-header deadlines |
+| `MUX_PROXY_RESPONSE_BODY_IDLE_TIMEOUT` | Maximum pause between bytes read from an HTTP response body |
 | `MUX_PROXY_IDLE_CONN_TIMEOUT`, `MUX_PROXY_EXPECT_CONTINUE_TIMEOUT` | HTTP transport idle and `Expect: 100-continue` timeouts |
 | `MUX_PROXY_MAX_IDLE_CONNS`, `MUX_PROXY_MAX_IDLE_CONNS_PER_HOST`, `MUX_PROXY_MAX_CONNS_PER_HOST` | HTTP transport connection-pool limits |
 | `MUX_PROXY_MAX_TUNNELS`, `MUX_PROXY_TUNNEL_IDLE_TIMEOUT` | Active tunnel limit and idle timeout |
@@ -125,7 +126,7 @@ Every application setting is represented in [`.env.example`](.env.example). `MUX
 
 ### Go network stack tuning
 
-`MUX_PROXY_TIMEOUT` remains the overall deadline for a forwarded HTTP request or CONNECT setup. The separate dial, TLS handshake, and response-header timeouts apply within that deadline. `MUX_PROXY_NETWORK` selects automatic, IPv4-only, or IPv6-only TCP dialing to an upstream proxy; SOCKS upstreams still resolve destination hostnames themselves.
+`MUX_PROXY_TIMEOUT` limits forwarded HTTP requests until the response headers arrive, and limits CONNECT setup. It does not cap the total duration of an HTTP response body. `MUX_PROXY_RESPONSE_BODY_IDLE_TIMEOUT` defaults to 2 minutes and closes a response only when no body bytes arrive during that interval. Large downloads can run for hours while data keeps arriving. The separate dial, TLS handshake, and response-header timeouts apply within the setup deadline. `MUX_PROXY_NETWORK` selects automatic, IPv4-only, or IPv6-only TCP dialing to an upstream proxy; SOCKS upstreams still resolve destination hostnames themselves.
 
 The transport settings control idle connection reuse and limits per destination host. `MUX_PROXY_MAX_CONNS_PER_HOST=0` leaves the total per-host limit unlimited. The HTTP/2 SETTINGS stream limit defaults to the lower of the global and per-IP tunnel limits; ping and stalled-write timeouts use Go's `net/http.HTTP2Config`.
 
@@ -147,6 +148,7 @@ auth:
 proxy:
   algorithm: roundrobin
   timeout: 30
+  response_body_idle_timeout: 2m
 upstreams:
   - url: "socks5://socks.example.net:1080"
     auth:

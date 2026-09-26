@@ -48,6 +48,7 @@ func TestLoadConfigFromEnvOnly(t *testing.T) {
 		"MUX_PROXY_DIAL_KEEP_ALIVE=3s",
 		"MUX_PROXY_TLS_HANDSHAKE_TIMEOUT=4s",
 		"MUX_PROXY_RESPONSE_HEADER_TIMEOUT=5s",
+		"MUX_PROXY_RESPONSE_BODY_IDLE_TIMEOUT=7s",
 		"MUX_PROXY_IDLE_CONN_TIMEOUT=6s",
 		"MUX_PROXY_EXPECT_CONTINUE_TIMEOUT=0s",
 		"MUX_PROXY_MAX_IDLE_CONNS=11",
@@ -79,7 +80,7 @@ func TestLoadConfigFromEnvOnly(t *testing.T) {
 	if !cfg.Auth.Enabled || cfg.Auth.Username != "client" || cfg.Auth.Password != "literal$#secret with spaces" {
 		t.Fatal("client authentication overrides not applied")
 	}
-	if cfg.Proxy.Algorithm != "random" || cfg.Proxy.Timeout != 9 || cfg.Proxy.Network != "tcp4" || time.Duration(cfg.Proxy.DialTimeout) != 2*time.Second || time.Duration(cfg.Proxy.DialKeepAlive) != 3*time.Second || time.Duration(cfg.Proxy.TLSHandshakeTimeout) != 4*time.Second || time.Duration(cfg.Proxy.ResponseHeaderTimeout) != 5*time.Second || time.Duration(cfg.Proxy.IdleConnTimeout) != 6*time.Second || time.Duration(cfg.Proxy.ExpectContinueTimeout) != 0 || cfg.Proxy.MaxIdleConns != 11 || cfg.Proxy.MaxIdleConnsPerHost != 3 || cfg.Proxy.MaxConnsPerHost != 4 || cfg.Proxy.MaxTunnels != 7 || cfg.Proxy.MaxTunnelsPerIP != 4 || time.Duration(cfg.Proxy.TunnelIdleTimeout) != 8*time.Minute || time.Duration(cfg.Proxy.FailoverCooldown) != 6*time.Second {
+	if cfg.Proxy.Algorithm != "random" || cfg.Proxy.Timeout != 9 || cfg.Proxy.Network != "tcp4" || time.Duration(cfg.Proxy.DialTimeout) != 2*time.Second || time.Duration(cfg.Proxy.DialKeepAlive) != 3*time.Second || time.Duration(cfg.Proxy.TLSHandshakeTimeout) != 4*time.Second || time.Duration(cfg.Proxy.ResponseHeaderTimeout) != 5*time.Second || time.Duration(cfg.Proxy.ResponseBodyIdleTimeout) != 7*time.Second || time.Duration(cfg.Proxy.IdleConnTimeout) != 6*time.Second || time.Duration(cfg.Proxy.ExpectContinueTimeout) != 0 || cfg.Proxy.MaxIdleConns != 11 || cfg.Proxy.MaxIdleConnsPerHost != 3 || cfg.Proxy.MaxConnsPerHost != 4 || cfg.Proxy.MaxTunnels != 7 || cfg.Proxy.MaxTunnelsPerIP != 4 || time.Duration(cfg.Proxy.TunnelIdleTimeout) != 8*time.Minute || time.Duration(cfg.Proxy.FailoverCooldown) != 6*time.Second {
 		t.Fatalf("proxy overrides not applied: %+v", cfg.Proxy)
 	}
 	if len(cfg.Upstreams) != 2 || cfg.Upstreams[0].URL != "http://127.0.0.1:8080" || cfg.Upstreams[1].URL != "socks5://127.0.0.1:1080" || cfg.Upstreams[1].Auth.Username != "socks-user" || cfg.Upstreams[1].Auth.Password != "socks-password" {
