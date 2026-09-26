@@ -52,6 +52,9 @@ jobs:
       - name: Build Docker image
         run: docker build -t go_proxy_mux:ci .
 
+      - name: Smoke test hardened image
+        run: bash scripts/container-smoke.sh go_proxy_mux:ci
+
   lint:
     runs-on: ubuntu-latest
     steps:

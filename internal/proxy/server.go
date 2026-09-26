@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/hightemp/go_proxy_mux/internal/balancer"
@@ -25,6 +26,7 @@ type ProxyServer struct {
 	upstreamTLS   []*tls.Config
 	tunnels       *tunnelRegistry
 	tunnelLimiter *concurrentLimiter
+	authFailures  *authFailureLimiter
 }
 
 // NewProxyServer creates a handler and dedicated transport for each upstream.
@@ -37,6 +39,9 @@ func NewProxyServer(cfg *config.Config) (*ProxyServer, error) {
 		balancer:      balancer.New(cfg.Proxy, cfg.Upstreams),
 		tunnels:       newTunnelRegistry(),
 		tunnelLimiter: newConcurrentLimiter(cfg.Proxy.MaxTunnels, cfg.Proxy.MaxTunnelsPerIP),
+	}
+	if cfg.Auth.Enabled {
+		ps.authFailures = newAuthFailureLimiter(cfg.Auth)
 	}
 	network := cfg.Proxy.Network
 	if network == "auto" {
@@ -111,10 +116,22 @@ func NewProxyServer(cfg *config.Config) (*ProxyServer, error) {
 
 // ServeHTTP authenticates and dispatches one proxy request.
 func (ps *ProxyServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if ps.config.Auth.Enabled && !ps.isAuthorized(r) {
-		w.Header().Set("Proxy-Authenticate", `Basic realm="Proxy"`)
-		http.Error(w, "Proxy Authentication Required", http.StatusProxyAuthRequired)
-		return
+	if ps.config.Auth.Enabled {
+		valid := ps.isAuthorized(r)
+		if blockedFor := ps.authFailures.attempt(addressHost(r.RemoteAddr), valid); blockedFor > 0 {
+			seconds := int64(blockedFor / time.Second)
+			if blockedFor%time.Second != 0 {
+				seconds++
+			}
+			w.Header().Set("Retry-After", strconv.FormatInt(seconds, 10))
+			http.Error(w, "Too many failed proxy authentication attempts", http.StatusTooManyRequests)
+			return
+		}
+		if !valid {
+			w.Header().Set("Proxy-Authenticate", `Basic realm="Proxy"`)
+			http.Error(w, "Proxy Authentication Required", http.StatusProxyAuthRequired)
+			return
+		}
 	}
 	selected, ok := ps.balancer.Next(-1)
 	if !ok {

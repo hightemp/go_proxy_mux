@@ -19,6 +19,10 @@ auth:
   enabled: true
   username: "<set-username>"
   password: "<set-strong-password>"
+  max_failed_attempts: 10
+  failure_window: 1m
+  block_duration: 5m
+  max_tracked_ips: 4096
 
 proxy:
   algorithm: roundrobin

@@ -1,10 +1,17 @@
 services:
   proxy:
     build: .
+    user: "${PROXY_RUN_UID:-1000}:${PROXY_RUN_GID:-1000}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     command: ["-config", "/app/config.yaml", "-env", ""]
     ports:
       - "8380:8380"
     volumes:
+      # A 0600 config.yaml must be owned by PROXY_RUN_UID; the mount is read-only.
       - ./config.yaml:/app/config.yaml:ro
       - ./certs:/app/certs:ro
     restart: unless-stopped

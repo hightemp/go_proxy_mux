@@ -65,6 +65,15 @@ func Validate(cfg *Config) error {
 	if !local && !cfg.Auth.Enabled && !cfg.Server.AllowUnauthenticatedPublicProxy {
 		return fmt.Errorf("public listener requires auth.enabled or server.allow_unauthenticated_public_proxy")
 	}
+	if cfg.Auth.MaxFailedAttempts < 1 || cfg.Auth.MaxFailedAttempts > 1000 {
+		return fmt.Errorf("auth.max_failed_attempts must be between 1 and 1000")
+	}
+	if cfg.Auth.FailureWindow <= 0 || cfg.Auth.BlockDuration <= 0 {
+		return fmt.Errorf("auth.failure_window and auth.block_duration must be positive")
+	}
+	if cfg.Auth.MaxTrackedIPs < 1 || cfg.Auth.MaxTrackedIPs > 65536 {
+		return fmt.Errorf("auth.max_tracked_ips must be between 1 and 65536")
+	}
 	if cfg.Auth.Enabled {
 		if cfg.Auth.Username == "" || cfg.Auth.Password == "" || strings.Contains(cfg.Auth.Username, ":") {
 			return fmt.Errorf("auth.enabled requires a username without ':' and a password")

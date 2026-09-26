@@ -46,6 +46,8 @@ After preparing `.env` and certificate files, run the local image:
 
 ```sh
 docker run -d --name go_proxy_mux -p 8380:8380 \
+  --user "$(id -u):$(id -g)" --read-only --cap-drop ALL \
+  --security-opt no-new-privileges \
   --env-file .env \
   -v "$PWD/certs:/app/certs:ro" \
   "hightemp/go_proxy_mux:$(cat VERSION)"
@@ -92,7 +94,7 @@ Settings take precedence in this order: **process environment → `.env` → YAM
 
 ### Environment variables
 
-Every application setting is represented in [`.env.example`](.env.example). `MUX_PUBLISH_HOST` and `MUX_PUBLISH_PORT` affect only Docker Compose port publishing.
+Every application setting is represented in [`.env.example`](.env.example). `MUX_PUBLISH_HOST`, `MUX_PUBLISH_PORT`, `PROXY_RUN_UID`, and `PROXY_RUN_GID` affect only Docker Compose.
 
 | Variable | Purpose |
 |---|---|
@@ -107,6 +109,7 @@ Every application setting is represented in [`.env.example`](.env.example). `MUX
 | `MUX_SERVER_HTTP2_SEND_PING_TIMEOUT`, `MUX_SERVER_HTTP2_PING_TIMEOUT`, `MUX_SERVER_HTTP2_WRITE_BYTE_TIMEOUT` | HTTP/2 connection health and stalled-write timeouts |
 | `MUX_SERVER_READ_HEADER_TIMEOUT`, `MUX_SERVER_IDLE_TIMEOUT`, `MUX_SERVER_SHUTDOWN_TIMEOUT` | Listener and shutdown timeouts |
 | `MUX_AUTH_ENABLED`, `MUX_AUTH_USERNAME`, `MUX_AUTH_PASSWORD` | Client Basic authentication |
+| `MUX_AUTH_MAX_FAILED_ATTEMPTS`, `MUX_AUTH_FAILURE_WINDOW`, `MUX_AUTH_BLOCK_DURATION`, `MUX_AUTH_MAX_TRACKED_IPS` | Failed login throttling per source IP |
 | `MUX_PROXY_ALGORITHM` | `roundrobin` or `random` |
 | `MUX_PROXY_TIMEOUT` | HTTP setup through response headers and CONNECT setup timeout, in seconds |
 | `MUX_PROXY_NETWORK` | Outbound `auto`, `tcp4`, or `tcp6` dialing |
@@ -123,6 +126,7 @@ Every application setting is represented in [`.env.example`](.env.example). `MUX
 | `MUX_UPSTREAM_N_AUTH_ENABLED`, `MUX_UPSTREAM_N_AUTH_USERNAME`, `MUX_UPSTREAM_N_AUTH_PASSWORD` | Credentials for upstream N |
 | `MUX_UPSTREAM_N_TLS_CA_FILE` | Optional private CA file for an HTTPS upstream |
 | `MUX_PUBLISH_HOST`, `MUX_PUBLISH_PORT` | Host-side Compose binding only |
+| `PROXY_RUN_UID`, `PROXY_RUN_GID` | Container process identity in Compose only |
 
 ### Go network stack tuning
 
@@ -145,6 +149,10 @@ auth:
   enabled: true
   username: "<set-username>"
   password: "<set-strong-password>"
+  max_failed_attempts: 10
+  failure_window: 1m
+  block_duration: 5m
+  max_tracked_ips: 4096
 proxy:
   algorithm: roundrobin
   timeout: 30
@@ -169,6 +177,8 @@ For local HTTP, bind `127.0.0.1` and leave both TLS paths empty. A listener on a
 
 The certificate must match the hostname or IP used by clients. Certificate and key files are validated at startup. Renew them externally and restart the proxy to load replacements. The Docker image contains neither configuration secrets nor TLS keys.
 
+By default, the tenth failed Basic authentication attempt from one source IP within a one-minute window blocks that IP for 5 minutes. The window begins with its first failure. Earlier failures receive `407`; blocked requests receive `429` with `Retry-After`, including requests with correct credentials until the block expires. A successful login before the block clears the failure count. Clients sharing one public IP also share its limit. `max_tracked_ips` bounds in-memory failure records (4096 by default); when full, the oldest record is evicted. Counters reset when the process restarts.
+
 ### Upstream proxies and failover
 
 Each upstream is selected by its URL scheme. HTTP and HTTPS upstreams can use Basic authentication. An HTTPS upstream validates its certificate against system roots; set `tls_ca_file` only for a private CA.
@@ -190,7 +200,7 @@ Two Compose files provide separate configuration paths:
 | `.env` | `docker compose up --build` | [docker-compose.yml](docker-compose.yml) passes `.env` as raw values; Docker Compose 2.30+ required. `MUX_PUBLISH_HOST:MUX_PUBLISH_PORT` maps to `MUX_SERVER_PORT`. |
 | `config.yaml` | `docker compose -f docker-compose.config.yml up --build` | [docker-compose.config.yml](docker-compose.config.yml) mounts YAML read-only and disables `.env` loading in the application. It publishes port 8380; update the mapping if `server.port` differs. |
 
-Both variants mount `certs/` read-only. Set `server.host` (or `MUX_SERVER_HOST`) to `0.0.0.0` inside the container. The certificate and key paths in the examples resolve under `/app/certs/`.
+Both variants mount `certs/` read-only and run with a read-only root filesystem, no Linux capabilities, and no privilege escalation. The image defaults to UID/GID 1000; Compose uses `PROXY_RUN_UID` and `PROXY_RUN_GID` (also 1000 by default). Use a non-root UID that can read your mode-`0600` configuration and key files, or grant the chosen group read access. Set `server.host` (or `MUX_SERVER_HOST`) to `0.0.0.0` inside the container. The certificate and key paths in the examples resolve under `/app/certs/`. Base images are pinned by digest and checked for updates weekly by Dependabot.
 
 ## Usage
 
@@ -216,6 +226,7 @@ For a TLS listener, configure clients with an HTTPS proxy URL, the certificate's
 | `make build-static` | Build `go_proxy_mux_static` with CGO disabled |
 | `make run` | Run from the project directory; `.env` is loaded when present |
 | `make ci` | Check formatting, vet, lint, and run race-enabled tests |
+| `make load-test` | Run concurrent local HTTP and CONNECT benchmarks |
 | `make docker-build` | Build `hightemp/go_proxy_mux:<VERSION>` locally |
 | `make docker-push` | Push that local image to Docker Hub |
 | `make clean` | Remove local normal and static binaries |
@@ -228,6 +239,8 @@ make ci
 ```
 
 CI validates both Compose variants and builds the Docker image. Integration tests cover HTTP forwarding, HTTP/1.1 and HTTP/2 CONNECT, upstream TLS, SOCKS4/SOCKS5, authentication, failover, cancellation, and shutdown.
+
+`make load-test` measures authenticated small and 64 KiB HTTP responses plus HTTP/1.1, HTTP/2, and SOCKS5 CONNECT echo tunnels through local upstreams at 32 workers (`-cpu=4`, parallelism 8). The regular test suite checks that slow client tunnels release their slots. The benchmarks report throughput and allocations for this machine; they do not measure remote upstream latency or Internet bandwidth.
 
 ## Release
 

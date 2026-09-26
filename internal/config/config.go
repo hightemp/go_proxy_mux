@@ -61,9 +61,13 @@ type TLSConfig struct {
 
 // AuthConfig contains credentials accepted from clients.
 type AuthConfig struct {
-	Enabled  bool   `yaml:"enabled"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
+	Enabled           bool     `yaml:"enabled"`
+	Username          string   `yaml:"username"`
+	Password          string   `yaml:"password"`
+	MaxFailedAttempts int      `yaml:"max_failed_attempts"`
+	FailureWindow     Duration `yaml:"failure_window"`
+	BlockDuration     Duration `yaml:"block_duration"`
+	MaxTrackedIPs     int      `yaml:"max_tracked_ips"`
 }
 
 // ProxyConfig controls upstream selection, timeouts, and tunnel limits.
@@ -116,6 +120,12 @@ func Default() Config {
 			ReadHeaderTimeout:     Duration(15 * time.Second),
 			IdleTimeout:           Duration(2 * time.Minute),
 			ShutdownTimeout:       Duration(15 * time.Second),
+		},
+		Auth: AuthConfig{
+			MaxFailedAttempts: 10,
+			FailureWindow:     Duration(time.Minute),
+			BlockDuration:     Duration(5 * time.Minute),
+			MaxTrackedIPs:     4096,
 		},
 		Proxy: ProxyConfig{
 			Algorithm:               "roundrobin",

@@ -41,6 +41,10 @@ func TestLoadConfigFromEnvOnly(t *testing.T) {
 		"MUX_AUTH_ENABLED=true",
 		"MUX_AUTH_USERNAME=client",
 		"MUX_AUTH_PASSWORD=literal$#secret with spaces",
+		"MUX_AUTH_MAX_FAILED_ATTEMPTS=8",
+		"MUX_AUTH_FAILURE_WINDOW=2m",
+		"MUX_AUTH_BLOCK_DURATION=3m",
+		"MUX_AUTH_MAX_TRACKED_IPS=2048",
 		"MUX_PROXY_ALGORITHM=random",
 		"MUX_PROXY_TIMEOUT=9",
 		"MUX_PROXY_NETWORK=tcp4",
@@ -77,7 +81,7 @@ func TestLoadConfigFromEnvOnly(t *testing.T) {
 	if cfg.Server.Host != "127.0.0.1" || cfg.Server.Port != 9393 || cfg.Server.MaxConnections != 12 || cfg.Server.MaxConnectionsPerIP != 6 || cfg.Server.MaxHeaderBytes != 8192 || cfg.Server.HTTP2MaxConcurrentStreams != 2 || time.Duration(cfg.Server.HTTP2SendPingTimeout) != 100*time.Millisecond || time.Duration(cfg.Server.HTTP2PingTimeout) != 200*time.Millisecond || time.Duration(cfg.Server.HTTP2WriteByteTimeout) != 300*time.Millisecond || time.Duration(cfg.Server.ReadHeaderTimeout) != 3*time.Second || time.Duration(cfg.Server.IdleTimeout) != 4*time.Minute || time.Duration(cfg.Server.ShutdownTimeout) != 5*time.Second {
 		t.Fatalf("server overrides not applied: %+v", cfg.Server)
 	}
-	if !cfg.Auth.Enabled || cfg.Auth.Username != "client" || cfg.Auth.Password != "literal$#secret with spaces" {
+	if !cfg.Auth.Enabled || cfg.Auth.Username != "client" || cfg.Auth.Password != "literal$#secret with spaces" || cfg.Auth.MaxFailedAttempts != 8 || time.Duration(cfg.Auth.FailureWindow) != 2*time.Minute || time.Duration(cfg.Auth.BlockDuration) != 3*time.Minute || cfg.Auth.MaxTrackedIPs != 2048 {
 		t.Fatal("client authentication overrides not applied")
 	}
 	if cfg.Proxy.Algorithm != "random" || cfg.Proxy.Timeout != 9 || cfg.Proxy.Network != "tcp4" || time.Duration(cfg.Proxy.DialTimeout) != 2*time.Second || time.Duration(cfg.Proxy.DialKeepAlive) != 3*time.Second || time.Duration(cfg.Proxy.TLSHandshakeTimeout) != 4*time.Second || time.Duration(cfg.Proxy.ResponseHeaderTimeout) != 5*time.Second || time.Duration(cfg.Proxy.ResponseBodyIdleTimeout) != 7*time.Second || time.Duration(cfg.Proxy.IdleConnTimeout) != 6*time.Second || time.Duration(cfg.Proxy.ExpectContinueTimeout) != 0 || cfg.Proxy.MaxIdleConns != 11 || cfg.Proxy.MaxIdleConnsPerHost != 3 || cfg.Proxy.MaxConnsPerHost != 4 || cfg.Proxy.MaxTunnels != 7 || cfg.Proxy.MaxTunnelsPerIP != 4 || time.Duration(cfg.Proxy.TunnelIdleTimeout) != 8*time.Minute || time.Duration(cfg.Proxy.FailoverCooldown) != 6*time.Second {

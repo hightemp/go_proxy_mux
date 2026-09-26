@@ -4,7 +4,7 @@ DOCKER_IMAGE=hightemp/go_proxy_mux
 VERSION := $(shell tr -d '[:space:]' < VERSION)
 LINT_VERSION=v2.12.0
 
-.PHONY: build build-static docker-build docker-push clean test run install deps release format-check vet lint ci
+.PHONY: build build-static docker-build docker-push clean test load-test run install deps release format-check vet lint ci
 
 build:
 	go build -o $(BINARY_NAME) $(CMD_PACKAGE)
@@ -23,6 +23,9 @@ clean:
 
 test:
 	go test -race ./...
+
+load-test:
+	go test ./internal/proxy -run '^$$' -bench 'BenchmarkProxy(HTTP|HTTPBulk|CONNECT|HTTP2CONNECT|SOCKS5CONNECT)$$' -benchtime=3s -cpu=4 -benchmem
 
 format-check:
 	@test -z "$$(gofmt -l cmd internal)"

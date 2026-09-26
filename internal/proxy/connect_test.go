@@ -302,7 +302,7 @@ func TestHTTP2Connect(t *testing.T) {
 		_, _ = conn.Write(message)
 	})
 	cfg := config.Default()
-	cfg.Auth = config.AuthConfig{Enabled: true, Username: "h2-user", Password: "strong-h2-password"}
+	cfg.Auth.Enabled, cfg.Auth.Username, cfg.Auth.Password = true, "h2-user", "strong-h2-password"
 	cfg.Proxy.TunnelIdleTimeout = config.Duration(time.Second)
 	cfg.Upstreams = []config.UpstreamConfig{{URL: upstreamURL}}
 	handler, err := NewProxyServer(&cfg)

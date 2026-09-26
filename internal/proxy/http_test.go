@@ -55,7 +55,7 @@ func TestHTTPForwardingAndAuthentication(t *testing.T) {
 	}))
 	defer upstream.Close()
 	cfg := config.Default()
-	cfg.Auth = config.AuthConfig{Enabled: true, Username: "client-user", Password: "strong-client-password"}
+	cfg.Auth.Enabled, cfg.Auth.Username, cfg.Auth.Password = true, "client-user", "strong-client-password"
 	cfg.Upstreams = []config.UpstreamConfig{{URL: upstream.URL, Auth: config.UpstreamAuth{Enabled: true, Username: "up-user", Password: "up-password"}}}
 	proxyServer := newTestProxy(t, &cfg)
 	client := clientThroughProxy(t, proxyServer.URL, cfg.Auth.Username, cfg.Auth.Password)

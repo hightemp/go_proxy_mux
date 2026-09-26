@@ -19,6 +19,9 @@ func TestLoadConfig(t *testing.T) {
 		{name: "public HTTP", yaml: "server:\n  host: 0.0.0.0\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "public HTTP listener"},
 		{name: "invalid algorithm", yaml: "proxy:\n  algorithm: mystery\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "proxy.algorithm"},
 		{name: "invalid network", yaml: "proxy:\n  network: udp\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "proxy.network"},
+		{name: "invalid auth threshold", yaml: "auth:\n  max_failed_attempts: 0\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "auth.max_failed_attempts"},
+		{name: "invalid auth window", yaml: "auth:\n  failure_window: 0s\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "auth.failure_window"},
+		{name: "invalid tracked IP limit", yaml: "auth:\n  max_tracked_ips: 0\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "auth.max_tracked_ips"},
 		{name: "invalid dial timeout", yaml: "proxy:\n  dial_timeout: 0s\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "proxy transport timeouts"},
 		{name: "invalid response body idle timeout", yaml: "proxy:\n  response_body_idle_timeout: 0s\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "proxy.response_body_idle_timeout"},
 		{name: "per-IP connection limit too high", yaml: "server:\n  max_connections_per_ip: 2048\nupstreams:\n  - url: http://127.0.0.1:8888\n", wantError: "server.max_connections_per_ip"},
@@ -50,6 +53,9 @@ func TestLoadConfig(t *testing.T) {
 			}
 			if cfg.Proxy.MaxTunnels != 256 || time.Duration(cfg.Proxy.FailoverCooldown) != 30*time.Second || time.Duration(cfg.Proxy.ResponseBodyIdleTimeout) != 2*time.Minute {
 				t.Fatalf("unexpected defaults: %+v", cfg.Proxy)
+			}
+			if cfg.Auth.MaxFailedAttempts != 10 || time.Duration(cfg.Auth.FailureWindow) != time.Minute || time.Duration(cfg.Auth.BlockDuration) != 5*time.Minute || cfg.Auth.MaxTrackedIPs != 4096 {
+				t.Fatalf("unexpected auth defaults: %+v", cfg.Auth)
 			}
 		})
 	}

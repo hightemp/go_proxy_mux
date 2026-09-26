@@ -1,6 +1,12 @@
 services:
   proxy:
     build: .
+    user: "${PROXY_RUN_UID:-1000}:${PROXY_RUN_GID:-1000}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     env_file:
       - path: ./.env
         format: raw

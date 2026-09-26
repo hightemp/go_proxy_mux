@@ -116,6 +116,8 @@ func applyEnvOverrides(cfg *Config, values map[string]string) error {
 		{"MUX_SERVER_MAX_HEADER_BYTES", &cfg.Server.MaxHeaderBytes},
 		{"MUX_SERVER_HTTP2_MAX_CONCURRENT_STREAMS", &cfg.Server.HTTP2MaxConcurrentStreams},
 		{"MUX_PROXY_TIMEOUT", &cfg.Proxy.Timeout},
+		{"MUX_AUTH_MAX_FAILED_ATTEMPTS", &cfg.Auth.MaxFailedAttempts},
+		{"MUX_AUTH_MAX_TRACKED_IPS", &cfg.Auth.MaxTrackedIPs},
 		{"MUX_PROXY_MAX_IDLE_CONNS", &cfg.Proxy.MaxIdleConns},
 		{"MUX_PROXY_MAX_IDLE_CONNS_PER_HOST", &cfg.Proxy.MaxIdleConnsPerHost},
 		{"MUX_PROXY_MAX_CONNS_PER_HOST", &cfg.Proxy.MaxConnsPerHost},
@@ -151,6 +153,8 @@ func applyEnvOverrides(cfg *Config, values map[string]string) error {
 		{"MUX_PROXY_EXPECT_CONTINUE_TIMEOUT", &cfg.Proxy.ExpectContinueTimeout},
 		{"MUX_PROXY_TUNNEL_IDLE_TIMEOUT", &cfg.Proxy.TunnelIdleTimeout},
 		{"MUX_PROXY_FAILOVER_COOLDOWN", &cfg.Proxy.FailoverCooldown},
+		{"MUX_AUTH_FAILURE_WINDOW", &cfg.Auth.FailureWindow},
+		{"MUX_AUTH_BLOCK_DURATION", &cfg.Auth.BlockDuration},
 	}
 	for _, entry := range durations {
 		known[entry.name] = true
